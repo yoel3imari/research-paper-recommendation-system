@@ -9,8 +9,8 @@ and cannot do. Append new entries to the Session Log.
 | Phase (architecture §11) | Status | Notes |
 |---|---|---|
 | 1. Scaffold (uv, pyproject, config, .gitignore) | ✅ Done | commit `0a62f75` |
-| 2. Ingest + tests (`src/ingest.py`) | ⏭ Next | streaming from HF, sort-by-id snapshot |
-| 3. Embed pipeline + tests | ⛔ | ONNX + manifest/resume |
+| 2. Ingest + tests (`src/ingest.py`) | ✅ Done | commit `…` — streaming HF, sort-by-id snapshot; smoke-validated live |
+| 3. Embed pipeline + tests | ⏭ Next | ONNX + manifest/resume |
 | 4. Index + bench + tests | ⛔ | IVF8192,SQ8 + benchmark report |
 | 5. FastAPI + tests | ⛔ | 5 endpoints, concurrency |
 | 6. Streamlit dashboard | ⛔ | query mode + seed paper mode |
@@ -98,4 +98,14 @@ Full detail: `docs/architecture.md`.
 - Added `required-environments` to `[tool.uv]` to stop universal-lockfile source-build fallbacks.
 - Verified all imports, ruff clean, config env-override works (`INDEX_PATH`).
 - Removed hello-world `main.py` stub.
-- **Next**: Phase 2 — `src/ingest.py` + `tests/test_ingest.py`.
+
+### 2026-08-02 — Phase 2: ingest
+- `src/ingest.py`: two-pass design — (1) single network pass via `ds.iter(batch_size=8192)` cleaning + staging each batch to `data/raw/staging/`, (2) out-of-core polars `scan_parquet → unique(id) → sort(id) → sink_parquet` snapshot. Columns selected at load time via `load_dataset(..., columns=...)`.
+- **Why not `ds.shard(num_shards, index=i)` per shard**: each call re-reads the stream from the start (O(N²) network). `iter(batch_size=...)` advances one stream sequentially.
+- Snapshot columns: `row_index` (dense int64), `id`, `title`, `abstract`, `categories`, `authors`, `update_date`. `ids.npy` = `np.arange(N, int64)` — the alignment key (row i of every artifact ↔ snapshot row ids[i]).
+- `CORPUS_FILTER` env var: regex matched per whitespace-separated category token (a paper is kept if any token matches). Confirmed live: categories are space-separated multi-token strings (e.g. `acc-phys physics.acc-ph`).
+- Tests (18): `tests/conftest.py` `synthetic_papers` fixture; `tests/test_ingest.py` classes `TestCleanBatch`, `TestCategoryPattern`, `TestCategoryFilter`, `TestMergeSnapshot`.
+- Added `pythonpath = ["."]` to `[tool.pytest.ini_options]` (needed for `from src.ingest import ...`).
+- Polars 1.43 gotchas: no `str.split_whitespace()` (use `str.split(by=" ", literal=True)`); `sink_parquet` does NOT create parent dirs (`mkdir` first).
+- **Live smoke test passed** (`python -m src.ingest --max-batches 10`): 81,920 rows in ~3min, peak RSS ~796MB — HF streaming works on this machine (the Phase-2 risk is retired). Artifacts cleaned up afterward; full run is `uv run python -m src.ingest`.
+- **Next**: Phase 3 embed — suggested 15-min ONNX smoke test first (download `model_quint8_avx2.onnx`, encode ~1K papers, measure papers/sec) to validate the architecture's 300-950 paps/sec claim before the ~2h full-corpus embed.

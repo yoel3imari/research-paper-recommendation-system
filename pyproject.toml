@@ -22,13 +22,11 @@ dependencies = [
 ]
 
 [tool.uv]
-# This machine is an Intel Mac (macOS 12, x86_64). Latest faiss-cpu / onnxruntime /
-# torch wheels no longer ship for this platform, so constrain resolution to it —
-# otherwise uv's universal lockfile falls back to source builds (swig, no headers).
 required-environments = ["sys_platform == 'darwin' and platform_machine == 'x86_64'"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["."]
 
 [tool.ruff]
 line-length = 100
