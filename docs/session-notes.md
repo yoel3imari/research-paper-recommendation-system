@@ -10,7 +10,7 @@ and cannot do. Append new entries to the Session Log.
 |---|---|---|
 | 1. Scaffold (uv, pyproject, config, .gitignore) | ✅ Done | commit `0a62f75` |
 | 2. Ingest + tests (`src/ingest.py`) | ✅ Done | commit `a48622a` — streaming HF, sort-by-id snapshot; smoke-validated live |
-| 3. Embed pipeline + tests | 🚧 Coded, **not run live** | commit `…` — offline-only (mobile data); ONNX smoke test deferred to WiFi |
+| 3. Embed pipeline + tests | 🚧 Coded, **not run live** | commit `f5d8f34` — offline-only (mobile data); ONNX smoke test deferred to WiFi |
 | 4. Index + bench + tests | ⛔ | IVF8192,SQ8 + benchmark report |
 | 5. FastAPI + tests | ⛔ | 5 endpoints, concurrency |
 | 6. Streamlit dashboard | ⛔ | query mode + seed paper mode |
