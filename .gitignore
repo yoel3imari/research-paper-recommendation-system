@@ -8,3 +8,14 @@ wheels/
 
 # Virtual environments
 .venv
+
+# Tooling
+.ruff_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+.env
+
+# Data artifacts (downloaded or produced by the pipeline)
+data/
+models/
