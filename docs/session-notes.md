@@ -10,7 +10,7 @@ and cannot do. Append new entries to the Session Log.
 |---|---|---|
 | 1. Scaffold (uv, pyproject, config, .gitignore) | ✅ Done | commit `0a62f75` |
 | 2. Ingest + tests (`src/ingest.py`) | ✅ Done | commit `a48622a` — streaming HF, sort-by-id snapshot; smoke-validated live |
-| 3. Embed pipeline + tests | ⏭ Next | ONNX + manifest/resume |
+| 3. Embed pipeline + tests | 🚧 Coded, **not run live** | commit `…` — offline-only (mobile data); ONNX smoke test deferred to WiFi |
 | 4. Index + bench + tests | ⛔ | IVF8192,SQ8 + benchmark report |
 | 5. FastAPI + tests | ⛔ | 5 endpoints, concurrency |
 | 6. Streamlit dashboard | ⛔ | query mode + seed paper mode |
@@ -109,3 +109,14 @@ Full detail: `docs/architecture.md`.
 - Polars 1.43 gotchas: no `str.split_whitespace()` (use `str.split(by=" ", literal=True)`); `sink_parquet` does NOT create parent dirs (`mkdir` first).
 - **Live smoke test passed** (`python -m src.ingest --max-batches 10`): 81,920 rows in ~3min, peak RSS ~796MB — HF streaming works on this machine (the Phase-2 risk is retired). Artifacts cleaned up afterward; full run is `uv run python -m src.ingest`.
 - **Next**: Phase 3 embed — suggested 15-min ONNX smoke test first (download `model_quint8_avx2.onnx`, encode ~1K papers, measure papers/sec) to validate the architecture's 300-950 paps/sec claim before the ~2h full-corpus embed.
+
+### 2026-08-02 — Phase 3: embed (coded offline, mobile-data session)
+- `src/embed.py`: `Encoder` protocol + `OptimumEncoder` (dynamic UINT8 ONNX). `run()` iterates the snapshot in fixed `CHUNK_SIZE` rows, encodes `title + " " + abstract`, L2-normalizes (cosine via inner product), writes `data/embeddings/chunk_{n:05d}.npy` + a `manifest.json` entry `{n: {start, end, rows, shape}}`. Resume semantics: skip chunks whose manifest records match the actual `rows`/`shape` (torn/truncated `.npy` → re-encode); atomic manifest writes via tmp+rename.
+- **Offline by design**: heavy `optimum`/`transformers` imports live inside `OptimumEncoder.__init__` (instantiation), never at module import. Tests use a `StubEncoder` — the real model is never constructed, so no download, no network. `OptimumEncoder.main()`/CLI is what runs the real job (deferred).
+- Tests (17): `TestL2Normalize`, `TestBuildTexts`, `TestIterChunks`, `TestEncodeChunk`, `TestManifest`, `TestChunkIsComplete`, `TestWriteChunk`, `TestRun`, `TestRunResume`. All offline, no model.
+- **Deferred to WiFi (this is the next action when off mobile data)**: 15-min ONNX smoke test — download `model_quint8_avx2.onnx` + AutoTokenizer, encode ~1K papers, measure papers/sec — before the ~2h full-corpus embed (`uv run python -m src.embed`).
+- Full suite now 35 tests green (18 ingest + 17 embed), ruff clean — run with `HF_HUB_OFFLINE=1` as a guard against accidental network.
+
+### Session context (mobile data — DO NOT network)
+- This entire phase ran with `HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1`. No downloads, no smoke test, no full run.
+- LSP shows "polars/optimum/transformers cannot resolve" in `src/embed.py` and tests — venv-path artifact of the language server only; all verified importable via `uv run`.
