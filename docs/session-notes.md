@@ -9,7 +9,7 @@ and cannot do. Append new entries to the Session Log.
 | Phase (architecture §11) | Status | Notes |
 |---|---|---|
 | 1. Scaffold (uv, pyproject, config, .gitignore) | ✅ Done | commit `0a62f75` |
-| 2. Ingest + tests (`src/ingest.py`) | ✅ Done | commit `…` — streaming HF, sort-by-id snapshot; smoke-validated live |
+| 2. Ingest + tests (`src/ingest.py`) | ✅ Done | commit `a48622a` — streaming HF, sort-by-id snapshot; smoke-validated live |
 | 3. Embed pipeline + tests | ⏭ Next | ONNX + manifest/resume |
 | 4. Index + bench + tests | ⛔ | IVF8192,SQ8 + benchmark report |
 | 5. FastAPI + tests | ⛔ | 5 endpoints, concurrency |
