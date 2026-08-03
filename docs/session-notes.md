@@ -120,3 +120,16 @@ Full detail: `docs/architecture.md`.
 ### Session context (mobile data — DO NOT network)
 - This entire phase ran with `HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1`. No downloads, no smoke test, no full run.
 - LSP shows "polars/optimum/transformers cannot resolve" in `src/embed.py` and tests — venv-path artifact of the language server only; all verified importable via `uv run`.
+
+### 2026-08-03 — Scope change: demo corpus (CS only)
+- **Decision**: the demo uses **computer science papers only** — not the full ~2.4M-row open-arxiv corpus. This is a portfolio demo; the smaller corpus makes every downstream phase (embed, index, API, dashboard) faster and the artifacts smaller.
+- Mechanism: the existing `CORPUS_FILTER` env var (include-regex on category tokens). CS-only pattern: `CORPUS_FILTER='^cs\.'` (matches categories like `cs.AI`, `cs.LG`; a paper is kept if any of its category tokens match).
+- Important: ingest still **streams the entire mirror once** (~90+ min) — the filter drops rows, it does not skip shards. Expected snapshot size: roughly 300–500K rows.
+- Run: `CORPUS_FILTER='^cs\.' uv run python -m src.ingest`
+- Network is back (no more `HF_HUB_OFFLINE=1`). Next after ingest: ONNX model download + throughput smoke test, then full embed.
+
+### 2026-08-03 — Dropped `optimum` for the runtime embed path ⚠️
+- **Blocker + fix**: `optimum[onnxruntime]` does not import on this machine. `optimum-onnx 0.1.0`'s `modeling.py` does `from optimum.exporters.onnx import main_export` at top level, but `optimum 2.1.0` only exposes `main_export` in the `__main__` submodule — a genuine upstream version mismatch. Fixing `optimum`'s version doesn't help (only 2.1.0 exists; optimum-onnx is capped). Additionally, importing `optimum.exporters.onnx`'s lazy chain drags in `onnx 1.19.0` which needs `ml_dtypes.float4_e2m1fn` (not present in the pinned `ml-dtypes 0.4.1`).
+- **Fix**: replaced `OptimumEncoder` with `OnnxEncoder` in `src/embed.py` — a bare `onnxruntime.InferenceSession` (`CPUExecutionProvider`) + `transformers.AutoTokenizer`. The BERT ONNX graph already outputs mean-pooled `last_hidden_state`, so no exporter machinery is needed. Removed `optimum`/`optimum-onnx`/`onnx`/`ml-dtypes` (4 pkgs). Runtime route is functionally identical, 17 embed tests still pass, ruff clean.
+- Smoke bench on this machine (realistic ~1000-char abstracts, 256-token truncation): **~17–20 pap/sec** (batch 64/128/256; model load 3.9s). **This contradicts the architecture's 300–950 pap/sec claim by ~10–20×.** Implication: a 300–500K-row CS snapshot will take roughly **4–7h to embed**, not ~2h. (Verify once the real snapshot exists; the number may drift — and long-format throughput scales with tokens, so exact abstract lengths matter.)
+- Model files downloaded to `models/all-MiniLM-L6-v2/` (config.json, tokenizer + vocab, `model_quint8_avx2.onnx` @23MB). `optimum` no longer needed at runtime; remove any remaining mention from docs.

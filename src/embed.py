@@ -8,9 +8,18 @@ shape is complete and is skipped on rerun (atomic chunks; no per-id
 bookkeeping).
 
 The encoder sits behind an ``Encoder`` protocol so unit tests substitute a
-stub. The real ``OptimumEncoder`` (dynamic UINT8 ONNX) loads its heavy deps
-only on instantiation, never at import time, so importing this module performs
-no network access and loads no model.
+stub. The real ``OnnxEncoder`` (dynamic UINT8 ONNX via a bare
+``onnxruntime.InferenceSession``) loads its heavy deps only on instantiation,
+never at import time, so importing this module performs no network access and
+loads no model.
+
+The encoder runs ONNX directly through ``onnxruntime`` rather than via
+``optimum``. ``optimum[onnxruntime]``'s lazy-import structure is incompatible
+with the pinned wheel set on this Intel Mac (it imports ``optimum.exporter.
+onnx.main_export`` at top level, which the installed ``optimum``/``optimum-onnx``
+versions do not provide), so depending on it breaks the whole runtime path.
+The mean-pooled ``last_hidden_state`` we need is exactly what the BERT ONNX
+graph outputs, so no exporter machinery is required.
 """
 
 from __future__ import annotations
@@ -62,7 +71,7 @@ class Encoder(Protocol):
     def encode_texts(self, texts: list[str], batch_size: int) -> np.ndarray: ...
 
 
-class OptimumEncoder:
+class OnnxEncoder:
     """Real encoder: tokenizer + dynamic UINT8 ONNX (all-MiniLM-L6-v2).
 
     Heavy imports live in ``__init__`` only (instantiation), so tests that
@@ -75,14 +84,15 @@ class OptimumEncoder:
         onnx_file: str = ModelConfig.ONNX_FILE,
         max_seq_length: int = ModelConfig.MAX_SEQ_LENGTH,
     ) -> None:
-        from optimum.onnxruntime import ORTModelForFeatureExtraction
+        import onnxruntime as ort
         from transformers import AutoTokenizer
 
         self.dim = ModelConfig.DIM
         self._max_seq_length = max_seq_length
         self._tokenizer = AutoTokenizer.from_pretrained(model_dir)
-        self._model = ORTModelForFeatureExtraction.from_pretrained(
-            model_dir, file_name=onnx_file
+        self._session = ort.InferenceSession(
+            model_dir / onnx_file,
+            providers=["CPUExecutionProvider"],
         )
 
     def encode_texts(self, texts: list[str], batch_size: int) -> np.ndarray:
@@ -96,7 +106,8 @@ class OptimumEncoder:
                 padding=True,
                 return_tensors="np",
             )
-            last_hidden = np.asarray(self._model(**encoded).last_hidden_state)
+            feed = {name: np.asarray(value) for name, value in encoded.items()}
+            last_hidden = np.asarray(self._session.run(None, feed)[0])
             outputs.append(l2_normalize(last_hidden.mean(axis=1)))
         return np.concatenate(outputs, axis=0)
 
@@ -226,7 +237,7 @@ def main() -> None:
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
-    encoder = OptimumEncoder()
+    encoder = OnnxEncoder()
     summary = run(
         encoder,
         snapshot_path=Path(args.snapshot),

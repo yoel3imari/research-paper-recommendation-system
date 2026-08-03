@@ -10,7 +10,6 @@ dependencies = [
     "fastapi>=0.141.1",
     "numpy<2",
     "onnxruntime==1.19.2",
-    "optimum[onnxruntime]>=2.1.0",
     "polars>=1.43.2",
     "pydantic>=2.13.4",
     "pydantic-settings>=2.14.2",
