@@ -1,0 +1,55 @@
+# =============================================================================
+# arXiv Paper Recommendation System — docker-compose
+# Phase 7 containerization (docs/architecture.md §9 "Deployment / Docker")
+#
+# Two services built from the SAME Dockerfile (CMD overridden per service):
+#   - app       : FastAPI (uvicorn) on :8000  — the recommendation API
+#   - dashboard : Streamlit on :8501          — demo UI, talks to `app`
+#
+# ⚠️ PLATFORM GOTCHA (architecture §9): Intel MacBook, macOS 12, x86_64, 8GB.
+# Docker Desktop's VM MUST be capped at ~4GB (Settings → Resources → Memory).
+# The ~1GB IVF/SQ8 index + app (~2GB total in the VM) fits; HNSW does NOT fit
+# in any VM on this machine. If HNSW serving is ever desired, a larger host is
+# required.
+#
+# ⚠️ PREREQUISITE: `./data` and `./models` must exist locally with real
+# artifacts BEFORE `docker compose up`:
+#   - data/index/arxiv.index + index_meta.json
+#   - data/processed/snapshot.parquet, ids.npy
+#   - models/all-MiniLM-L6-v2/  (ONNX model)
+# These are gitignored local files bind-mounted into the containers — they are
+# NOT baked into the image.
+# =============================================================================
+
+services:
+  app:
+    build: .
+    # Default CMD in the Dockerfile already runs uvicorn; explicit for clarity.
+    command: ["uvicorn", "src.api.app:app", "--host", "0.0.0.0", "--port", "8000"]
+    ports:
+      - "8000:8000"
+    environment:
+      INDEX_PATH: /app/data/index/arxiv.index
+      OMP_NUM_THREADS: "2"
+      API_BASE_URL: http://app:8000/api/v1
+    volumes:
+      - ./data:/app/data
+      - ./models:/app/models
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+
+  dashboard:
+    build: .
+    # Streamlit must bind 0.0.0.0 inside the container to be reachable.
+    command: ["streamlit", "run", "dashboard/app.py", "--server.port", "8501", "--server.address", "0.0.0.0"]
+    ports:
+      - "8501:8501"
+    environment:
+      API_BASE_URL: http://app:8000/api/v1
+    depends_on:
+      app:
+        condition: service_healthy

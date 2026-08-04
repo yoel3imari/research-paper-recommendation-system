@@ -1,0 +1,17 @@
+# Build-context hygiene — keep the image lean and avoid sending gitignored
+# artifacts (data/, models/) to the Docker daemon. They are bind-mounted at
+# runtime (see docker-compose.yml), never COPY'd into the image.
+.git
+.gitignore
+.venv
+__pycache__
+*.pyc
+.pytest_cache
+.ruff_cache
+data/
+models/
+tests/
+notebooks/
+reports/
+docs/
+README.md

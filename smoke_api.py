@@ -53,14 +53,14 @@ def main() -> int:
     recs = body["results"]
     _check(len(recs) == 5, f"returned {len(recs)} recs (expect 5)")
     scores = [x["score"] for x in recs]
-    _check(all(b > e for b, e in zip(scores, scores[1:], strict=True)),
+    _check(all(b > e for b, e in zip(scores, scores[1:], strict=False)),
            f"scores descending {scores}")
 
     q = client.get("/api/v1/recommend/query", params={"q": "graph neural networks", "k": 5})
     _check(q.status_code == 200, f"GET /recommend/query -> {q.status_code}")
     qrecs = q.json()["results"]
     qscores = [x["score"] for x in qrecs]
-    _check(len(qrecs) == 5 and all(b >= e for b, e in zip(qscores, qscores[1:], strict=True)),
+    _check(len(qrecs) == 5 and all(b >= e for b, e in zip(qscores, qscores[1:], strict=False)),
            f"query k=5 scores desc {qscores}")
     _check(all(x["paper"]["id"] for x in qrecs), "returned ids non-empty")
 

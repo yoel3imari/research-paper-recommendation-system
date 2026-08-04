@@ -94,10 +94,14 @@ class OnnxEncoder:
             model_dir / onnx_file,
             providers=["CPUExecutionProvider"],
         )
+        # Set True to print per-batch progress (stderr) — makes long encodes
+        # visibly advance instead of looking hung between chunk writes.
+        self.progress = False
 
     def encode_texts(self, texts: list[str], batch_size: int) -> np.ndarray:
         outputs: list[np.ndarray] = []
-        for start in range(0, len(texts), batch_size):
+        total = len(texts)
+        for start in range(0, total, batch_size):
             batch = texts[start : start + batch_size]
             encoded = self._tokenizer(
                 batch,
@@ -109,6 +113,16 @@ class OnnxEncoder:
             feed = {name: np.asarray(value) for name, value in encoded.items()}
             last_hidden = np.asarray(self._session.run(None, feed)[0])
             outputs.append(l2_normalize(last_hidden.mean(axis=1)))
+            if self.progress:
+                done = min(start + batch_size, total)
+                print(
+                    f"\r  encoded {done}/{total} rows "
+                    f"({done / total * 100:.0f}%)",
+                    end="",
+                    flush=True,
+                )
+        if self.progress:
+            print()
         return np.concatenate(outputs, axis=0)
 
 
