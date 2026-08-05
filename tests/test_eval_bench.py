@@ -1,7 +1,8 @@
-"""Offline tests for src.bench_index.py and src.evaluate.py (architecture §8).
+"""This module tests src.bench_index.py and src.evaluate.py. See architecture §8.
 
-Pure helpers only — tiny synthetic data, no real index, no snapshot, no
-network. Mirrors the test style of ``test_index.py`` (tmp_path for outputs).
+The tests cover pure helper functions only. They use tiny synthetic data and
+no real index, no snapshot, and no network. The tests mirror the style of
+``test_index.py`` and use ``tmp_path`` for outputs.
 """
 
 from __future__ import annotations
@@ -37,7 +38,7 @@ class TestRecallAtK:
     def test_multiple_queries_averaged(self):
         ann = np.array([[0, 1], [2, 3]])
         truth = np.array([[0, 1], [9, 8]])
-        # query 0: 2/2 hits, query 1: 0/2 hits -> mean 0.5
+        # Query 0 has two of two hits. Query 1 has zero of two hits. The mean is 0.5.
         assert recall_at_k(ann, truth, 2) == 0.5
 
     def test_ignores_negative_labels(self):
@@ -48,7 +49,7 @@ class TestRecallAtK:
 
 class TestP95:
     def test_basic_percentile(self):
-        values = list(range(1, 101))  # p95 = 95.05 with linear interpolation
+        values = list(range(1, 101))  # The p95 is 95.05 with linear interpolation.
         assert 94.0 < p95(values) < 96.0
 
     def test_empty(self):
@@ -84,7 +85,7 @@ class TestCategoryBaseRates:
         )
         rates = category_base_rates(df)
         assert abs(sum(rates.values()) - 1.0) < 1e-9
-        # cs.LG appears as primary in 2 of 5 rows; cs.AI in 2; cs.CL in 1.
+        # cs.LG is primary in 2 of 5 rows, cs.AI in 2, and cs.CL in 1.
         assert abs(rates["cs.LG"] - 0.4) < 1e-9
         assert abs(rates["cs.AI"] - 0.4) < 1e-9
         assert abs(rates["cs.CL"] - 0.2) < 1e-9

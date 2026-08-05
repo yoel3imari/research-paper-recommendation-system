@@ -1,9 +1,9 @@
-"""Tests for the arXiv recommendation API (docs/architecture.md §8, test_api).
+"""This module tests the arXiv recommendation API. See docs/architecture.md §8, test_api.
 
-These run fully offline: no model download, no real embeddings. A tiny FAISS
-index is built from synthetic L2-normalized vectors and the encoder is a stub
-(``FakeEmbed``) that maps a fixed vocabulary to deterministic vectors, so every
-assertion is pinned and deterministic.
+The tests run fully offline. They do not download a model, and they use no
+real embeddings. A tiny FAISS index uses synthetic L2-normalized vectors.
+The encoder is a stub (``FakeEmbed``) that maps a fixed vocabulary to
+deterministic vectors. Therefore, every assertion is pinned and deterministic.
 """
 
 from __future__ import annotations
@@ -16,8 +16,9 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from src.api.app import RecommendationService, _meta_to_paper, _split_authors, _split_categories
+from src.api.app import RecommendationService, _split_authors, _split_categories
 from src.api.router import get_service, router
+from src.api.schemas import paper_from_meta
 
 DIM = 4
 
@@ -31,19 +32,19 @@ _SAMPLE_TEXTS = [
 
 
 def _vec_for(text: str) -> np.ndarray:
-    """Deterministic unit vector seeded by the text (reproducible ranking)."""
+    """Build a deterministic unit vector from the text to make the ranking reproducible."""
     rng = np.random.default_rng(abs(hash(text)) % (2**32))
     v = rng.standard_normal(DIM)
     return (v / np.linalg.norm(v)).astype(np.float32)
 
 
 def _corpus_embeddings() -> np.ndarray:
-    """Deterministic unit embeddings for the 5 synthetic papers."""
+    """Build deterministic unit embeddings for the five synthetic papers."""
     return np.stack([_vec_for(t) for t in _SAMPLE_TEXTS])
 
 
 class FakeEmbed:
-    """Deterministic stub: maps a query string to a fixed unit vector."""
+    """This deterministic stub maps a query string to a fixed unit vector."""
 
     dim = DIM
 
@@ -52,7 +53,7 @@ class FakeEmbed:
 
 
 class FakeVectorIndex:
-    """Fake index returning row labels ordered by embedding inner product."""
+    """This fake index returns row labels ordered by the embedding inner product."""
 
     def __init__(self, embeddings: np.ndarray) -> None:
         self._emb = embeddings
@@ -65,7 +66,7 @@ class FakeVectorIndex:
 
 @pytest.fixture
 def corpus() -> pl.DataFrame:
-    """Synthetic 5-paper snapshot (category + year edges included)."""
+    """This synthetic snapshot has five papers and includes category and year edge cases."""
     return pl.DataFrame(
         {
             "row_index": [0, 1, 2, 3, 4],
@@ -98,7 +99,7 @@ def corpus() -> pl.DataFrame:
 
 
 def _build_service(df: pl.DataFrame) -> RecommendationService:
-    """Build a RecommendationService wired to synthetic data + stubs."""
+    """Build a RecommendationService with synthetic data and stub services."""
     svc = RecommendationService.__new__(RecommendationService)
     svc._encode_lock = threading.Lock()
     svc._encoder = FakeEmbed()
@@ -118,7 +119,7 @@ def _build_service(df: pl.DataFrame) -> RecommendationService:
             "year": int(row["update_date"][:4]),
         }
         svc.metadata.append(meta)
-        svc.by_id[meta["id"]] = _meta_to_paper(meta)
+        svc.by_id[meta["id"]] = paper_from_meta(meta)
         svc.n_papers += 1
         svc._titles_lower.append(meta["title"].lower())
     return svc
@@ -131,7 +132,7 @@ def service(corpus) -> RecommendationService:
 
 @pytest.fixture
 def client(service):
-    """App whose ``get_service`` dependency resolves to the stub service."""
+    """This app resolves the ``get_service`` dependency to the stub service."""
     app = FastAPI()
     app.include_router(router, prefix="/api/v1")
     app.dependency_overrides[get_service] = lambda: service
@@ -215,7 +216,7 @@ class TestRecommendPaper:
         assert r.status_code == 200
         body = r.json()
         assert len(body["results"]) == 3
-        assert body["query"]  # non-empty query text derived from the seed paper
+        assert body["query"]  # The query text is non-empty and comes from the seed paper.
         assert all(rec["paper"]["id"] for rec in body["results"])
 
     def test_unknown_seed_404(self, client):

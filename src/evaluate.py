@@ -1,16 +1,17 @@
 """Recommendation quality evaluation (docs/architecture.md §7).
 
-Two cheap, defensible proxies for a dataset with no citation graph:
+The dataset has no citation graph. The evaluation uses two defensible
+proxies:
 
 1. **Category-purity@k** — for a deterministic sample of seed papers, measure
    what fraction of the top-``k`` recommendations share the seed's primary
-   sub-category (``cs.AI``/``cs.LG``/``cs.CL``). Compared against a random
-   baseline (the corpus base rate for that category). Purity above baseline =
-   semantic signal present.
+   sub-category (``cs.AI``/``cs.LG``/``cs.CL``). Compare against a random
+   baseline (the corpus base rate for that category). Purity above baseline
+   indicates semantic signal.
 
 2. **Hand-judged query set** — a fixed list of curated research-interest
-   queries; the top-5 hits per query are written to ``reports/evaluation.md``
-   with empty ``relevance (0-3)`` cells for a human pass.
+   queries; the top-5 hits per query go to ``reports/evaluation.md`` with
+   empty ``relevance (0-3)`` cells for a human pass.
 
 Import-safe: no heavy work at import time; run with ``python -m src.evaluate``.
 """
@@ -52,8 +53,8 @@ HAND_JUDGED_QUERIES: list[str] = [
 def primary_cs_category(categories: Sequence[str] | str | None) -> str | None:
     """First category token starting with ``cs.`` (or None).
 
-    ``categories`` may be a sequence of tokens or a whitespace-separated string
-    (the snapshot stores the category field as a space-separated string).
+    ``categories`` is a sequence of tokens or a whitespace-separated string.
+    The snapshot stores the category field as a space-separated string.
     """
     tokens = categories.split() if isinstance(categories, str) else categories or ()
     for token in tokens:
@@ -81,7 +82,7 @@ def category_purity(
     """Fraction of the top-``k`` recommendation categories equal to ``seed_cat``.
 
     ``recs`` is a sequence of ``(score, category)`` tuples, best first. If the
-    seed has no primary ``cs.`` category the purity is 0 for that seed.
+    seed has no primary ``cs.`` category, the purity is 0 for that seed.
     """
     if not seed_cat:
         return 0.0
@@ -112,7 +113,7 @@ def run_evaluation(
     index_path: Path | None = None,
     snapshot_path: Path | None = None,
 ) -> dict:
-    """Compute category-purity@k vs random baseline; return summary dict."""
+    """Compute category-purity@k against the random baseline; return a summary dict."""
     index_path = index_path or Paths.INDEX
     if not index_path.exists():
         raise FileNotFoundError(f"index not found at {index_path}; run src.index first")
@@ -172,7 +173,7 @@ def _render_eval_markdown(summary: dict, query_hits: list[tuple[str, list[dict]]
         "# Evaluation",
         "",
         "Proxies used (no citation graph in this dataset — architecture §7): "
-        "category-purity@k vs a random baseline, plus a hand-judged query set.",
+        "category-purity@k against a random baseline, plus a hand-judged query set.",
         "",
         "## Category-purity@k",
         "",

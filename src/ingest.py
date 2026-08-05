@@ -1,23 +1,24 @@
-"""Streaming ingest of the arXiv corpus (docs/architecture.md §4.1).
+"""Ingests the arXiv corpus (docs/architecture.md §4.1).
 
-Streams the HuggingFace ``open-index/open-arxiv`` Parquet mirror once, in
-batches, never holding the full corpus in RAM. Produces the canonical
-snapshot:
+The module streams the HuggingFace ``open-index/open-arxiv`` Parquet mirror
+once, in batches. It never holds the full corpus in RAM. It produces the
+canonical snapshot:
 
-* ``data/processed/snapshot.parquet`` — deduplicated, filtered, sorted by
-  ``id``, with a dense integer ``row_index`` column.
-* ``data/processed/ids.npy`` — ``np.arange(N, dtype=np.int64)``, the alignment
-  key: row ``i`` of every downstream artifact corresponds to snapshot row
-  ``ids[i]``.
+* ``data/processed/snapshot.parquet`` — the deduplicated, filtered snapshot,
+  sorted by ``id``. It contains a dense integer ``row_index`` column.
+* ``data/processed/ids.npy`` — ``np.arange(N, dtype=np.int64)``. It is the
+  alignment key: row ``i`` of every downstream artifact corresponds to
+  snapshot row ``ids[i]``.
 
-The pipeline is two-pass by design:
+The pipeline has two passes:
 
-1. ``_stream_cleaned_batches`` — one network pass; each batch is filtered
-   (empty title/abstract dropped, optional ``CORPUS_FILTER``) and written to a
-   small staging parquet under ``data/raw/staging/``.
-2. ``merge_snapshot`` — scans the staged parquets lazily, deduplicates on
-   ``id``, sorts by ``id`` and sinks the snapshot out-of-core (polars
-   streaming engine), so peak memory stays bounded regardless of corpus size.
+1. ``_stream_cleaned_batches`` — one network pass. It filters each batch and
+   writes it to a small staging parquet under ``data/raw/staging/``. The
+   filter drops empty titles and abstracts and applies the optional
+   ``CORPUS_FILTER``.
+2. ``merge_snapshot`` — scans the staged parquets lazily. Deduplicates on
+   ``id``, sorts by ``id``, and sinks the snapshot out-of-core with the polars
+   streaming engine. Peak memory stays bounded regardless of corpus size.
 """
 
 from __future__ import annotations
@@ -51,10 +52,10 @@ STAGING_DIR: Path = Paths.DATA_RAW / "staging"
 
 # ── Batch cleaning (pure, unit-testable) ────────────────────────────────────
 def category_pattern(corpus_filter: str | None) -> re.Pattern[str] | None:
-    """Compile the ``CORPUS_FILTER`` regex, or return ``None`` to keep all.
+    """Compiles the ``CORPUS_FILTER`` regex or returns ``None`` to keep all.
 
-    The pattern is matched with ``re.search`` against each whitespace-separated
-    category token (a paper is kept if any of its categories matches).
+    ``re.search`` matches the pattern against each whitespace-separated category
+    token. The function keeps the paper when any category matches.
     """
     if not corpus_filter or not corpus_filter.strip():
         return None
@@ -62,12 +63,12 @@ def category_pattern(corpus_filter: str | None) -> re.Pattern[str] | None:
 
 
 def clean_batch(df: pl.DataFrame, pattern: re.Pattern[str] | None) -> pl.DataFrame:
-    """Reduce a raw batch to the snapshot fields and drop unusable rows.
+    """Reduces a raw batch to the snapshot fields and drops unusable rows.
 
-    Drops rows whose ``title`` or ``abstract`` is null/empty/whitespace-only,
-    and (when ``pattern`` is not ``None``) rows where no category token matches
-    the ``CORPUS_FILTER`` regex. Null categories are dropped only when a filter
-    is active (we cannot verify their category).
+    Drops rows whose ``title`` or ``abstract`` is null, empty, or whitespace-only.
+    When ``pattern`` is not ``None``, also drops rows where no category token
+    matches the ``CORPUS_FILTER`` regex. Drops null categories only when a filter
+    is active; a null category does not match the pattern.
     """
     df = df.select(SNAPSHOT_COLUMNS)
     df = df.filter(
@@ -88,12 +89,12 @@ def clean_batch(df: pl.DataFrame, pattern: re.Pattern[str] | None) -> pl.DataFra
 
 # ── Streaming pass ───────────────────────────────────────────────────────────
 def _iter_raw_batches(dataset_name: str) -> Iterator[pl.DataFrame]:
-    """Stream the HF mirror once, yielding raw polars batches.
+    """Streams the HF mirror once and yields raw polars batches.
 
-    Columns are selected at load time (``columns=``) so only the snapshot
-    fields cross the network. ``iter(batch_size=...)`` advances a single stream
-    sequentially — unlike per-index ``shard()`` calls, this never re-reads
-    earlier shards.
+    ``load_dataset`` selects columns at load time through the ``columns=``
+    argument. Only the snapshot fields cross the network.
+    ``iter(batch_size=...)`` advances a single stream sequentially. Unlike
+    per-index ``shard()`` calls, it never re-reads earlier shards.
     """
     ds = load_dataset(
         dataset_name,
@@ -111,10 +112,10 @@ def _stream_cleaned_batches(
     staging_dir: Path,
     max_batches: int | None = None,
 ) -> tuple[int, int]:
-    """Single network pass: clean each batch and stage it as parquet.
+    """Cleans each batch and stages it as parquet in a single network pass.
 
     Returns ``(batches_written, rows_written)``. ``max_batches`` bounds the
-    pass for smoke runs; ``None`` means the full corpus.
+    pass for smoke runs. ``None`` means the full corpus.
     """
     staging_dir.mkdir(parents=True, exist_ok=True)
     batches_written = 0
@@ -138,12 +139,12 @@ def merge_snapshot(
     snapshot_path: Path,
     ids_path: Path,
 ) -> int:
-    """Merge staged batches into the canonical snapshot. Returns row count.
+    """Merges staged batches into the canonical snapshot. Returns the row count.
 
-    Lazily scans all staged parquets, deduplicates on ``id`` (cross-shard
-    duplicates exist in the HF mirror), sorts by ``id``, assigns the dense
-    integer ``row_index`` and sinks ``snapshot.parquet`` via the polars
-    streaming engine (out-of-core). ``ids.npy`` is the dense index array.
+    Lazily scans all staged parquets. Deduplicates on ``id``; cross-shard
+    duplicates exist in the HF mirror. Sorts by ``id`` and assigns the dense
+    integer ``row_index``. Sinks ``snapshot.parquet`` through the polars
+    streaming engine, out-of-core. ``ids.npy`` is the dense index array.
     """
     lazy = (
         pl.scan_parquet(staging_dir / "batch_*.parquet")
@@ -169,10 +170,11 @@ def run(
     ids_path: Path | None = None,
     max_batches: int | None = None,
 ) -> int:
-    """Run the full ingest pipeline. Returns the snapshot row count.
+    """Runs the full ingest pipeline. Returns the snapshot row count.
 
-    All paths default to ``src.config.Paths`` / ``Settings``; ``corpus_filter``
-    falls back to the ``CORPUS_FILTER`` env var (``None`` = keep all).
+    All paths default to ``src.config.Paths`` and ``Settings``. ``corpus_filter``
+    falls back to the ``CORPUS_FILTER`` environment variable. ``None`` keeps all
+    rows.
     """
     settings = Settings()
     dataset_name = dataset_name or settings.dataset_name

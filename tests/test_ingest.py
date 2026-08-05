@@ -1,4 +1,4 @@
-"""Tests for src.ingest.py (docs/architecture.md §8, test_ingest)."""
+"""This module tests src.ingest.py. See docs/architecture.md §8, test_ingest."""
 
 from __future__ import annotations
 
@@ -34,7 +34,7 @@ class TestCleanBatch:
 
     def test_keeps_rows_with_valid_title_and_abstract(self, synthetic_papers):
         result = clean_batch(synthetic_papers, None)
-        assert result.height == 5  # 8 rows minus 3 dropped
+        assert result.height == 5  # Eight rows minus three dropped rows equals five.
 
 
 class TestCategoryPattern:
@@ -86,8 +86,8 @@ class TestMergeSnapshot:
         return tmp_path
 
     def test_dedupes_on_id_across_batches(self, tmp_path, synthetic_papers):
-        first = synthetic_papers.head(2)   # contains id 1001.0001
-        second = synthetic_papers.tail(6)  # contains id 1001.0001 again
+        first = synthetic_papers.head(2)   # This batch contains id 1001.0001.
+        second = synthetic_papers.tail(6)  # This batch contains id 1001.0001 again.
         staging = self._stage_batches(tmp_path, [first, second])
         n = merge_snapshot(staging, tmp_path / "snapshot.parquet", tmp_path / "ids.npy")
         snapshot = pl.read_parquet(tmp_path / "snapshot.parquet")

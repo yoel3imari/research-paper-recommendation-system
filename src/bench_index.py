@@ -1,19 +1,20 @@
 """FAISS index benchmark (docs/architecture.md §4.4).
 
-Measures the built vector index against exhaustive ground truth so "we chose
-SQ8" is a measured, documented decision rather than a claim:
+This module measures the built vector index against exhaustive ground
+truth. The measured numbers support the "we chose SQ8" decision:
 
-1. **Recall@10** of the IVF/SQ8 index vs an exhaustive ``IndexFlatIP`` over the
-   same vectors (held-out sample of the corpus).
+1. **Recall@10** of the IVF/SQ8 index against an exhaustive ``IndexFlatIP``
+   over the same vectors (held-out sample of the corpus).
 2. **p95 + mean search latency** over a fixed number of single-query searches
    (index warmed first, single-threaded).
-3. **Memory footprint** — RSS delta while the index is resident (best-effort
-   via ``resource``; on platforms where that is unreliable we report the
-   index's own ``total_vector_bytes`` as an estimate).
+3. **Memory footprint** — RSS delta while the index is resident. The measure
+   is best-effort via ``resource``. On platforms where that is unreliable,
+   report the index's own ``total_vector_bytes`` as an estimate.
 
-Outputs a markdown table to ``reports/index_benchmark.md`` (``Paths.INDEX_
-BENCHMARK``) and prints the same table to stdout. Import-safe: no heavy work
-happens at module import; run with ``python -m src.bench_index``.
+The module outputs a markdown table to ``reports/index_benchmark.md``
+(``Paths.INDEX_BENCHMARK``) and prints the same table to stdout.
+Import-safe: no heavy work happens at module import; run with
+``python -m src.bench_index``.
 """
 
 from __future__ import annotations
@@ -39,12 +40,12 @@ DEFAULT_SEED = 42
 
 # ── Pure helpers (unit-tested) ──────────────────────────────────────────────
 def recall_at_k(ann_labels: np.ndarray, truth_labels: np.ndarray, k: int) -> float:
-    """Fraction of the true top-``k`` that the ANN index found in its top-``k``.
+    """Fraction of the true top-``k`` that the ANN index finds in its top-``k``.
 
     ``ann_labels`` / ``truth_labels`` are 2-D arrays of FAISS row labels, one
-    row per query. Both must be sorted by descending score (FAISS returns them
-    that way). Rows with fewer than ``k`` results are handled by comparing only
-    the intersection.
+    row per query. Both are sorted by descending score (FAISS returns them
+    that way). If a row has fewer than ``k`` results, compare only the
+    intersection.
     """
     total_hits = 0
     total_relevant = 0
@@ -69,9 +70,9 @@ def p95(values: Sequence[float]) -> float:
 def _load_all_vectors() -> np.ndarray:
     """Concatenate all embedding chunks into one ``(N, d)`` float32 matrix.
 
-    At the demo corpus scale (~30K rows) this is ~46MB — fine to materialize
-    for the benchmark. Chunks are read in manifest order so row ``i`` of the
-    result aligns with snapshot row ``i`` (architecture §4.1).
+    At the demo corpus scale (~30K rows), the matrix is ~46MB. Materializing
+    it for the benchmark is acceptable. Read the chunks in manifest order.
+    Row ``i`` of the result aligns with snapshot row ``i`` (architecture §4.1).
     """
     manifest = load_manifest(Paths.MANIFEST)
     chunk_paths = iter_chunk_paths(Paths.DATA_EMBEDDINGS, manifest)
@@ -96,8 +97,8 @@ def run_benchmark(
 ) -> dict:
     """Run the index benchmark; return a summary dict.
 
-    Raises ``FileNotFoundError`` if the index or embeddings are missing (the
-    build pipeline has not run on this machine yet).
+    If the index or embeddings are missing, raise ``FileNotFoundError``. The
+    build pipeline has not run on this machine yet.
     """
     index_path = index_path or Paths.INDEX
     meta_path = meta_path or Paths.INDEX_META
@@ -130,7 +131,7 @@ def run_benchmark(
         latencies.append((time.perf_counter() - t0) * 1000)
 
     # Memory: report the on-disk index size (most reliable estimate; the
-    # in-memory footprint is dominated by the index's stored vectors).
+    # index's stored vectors dominate the in-memory footprint).
     mem_bytes = index_path.stat().st_size
 
     summary = {

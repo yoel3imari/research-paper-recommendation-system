@@ -1,7 +1,7 @@
 """Centralized configuration for the arXiv recommendation pipeline.
 
-Defaults encode the decisions in ``docs/architecture.md``. Deploy-time knobs
-are overridable through environment variables (see ``Settings``).
+Defaults encode the decisions in ``docs/architecture.md``. Environment
+variables override deploy-time knobs (see ``Settings``).
 """
 
 from pathlib import Path
@@ -77,7 +77,7 @@ class ModelConfig:
 
 # ── Environment overrides ───────────────────────────────────────────────────
 class Settings(BaseSettings):
-    """Deploy-time knobs. Override via env vars or a ``.env`` file."""
+    """Deploy-time knobs. Override them with environment variables or a ``.env`` file."""
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

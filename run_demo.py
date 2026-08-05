@@ -1,16 +1,16 @@
 """One-shot demo pipeline: subset snapshot -> embed -> FAISS index.
 
-Run it once and walk away — everything is printed to stdout with live
-progress, and the finished app is one command away.
+Run the pipeline once. The program prints live progress to stdout. The
+finished app starts with one command.
 
     uv run python run_demo.py              # default 20K papers
     uv run python run_demo.py --rows 5000  # smaller/faster
     uv run python run_demo.py --rows 20000 --batch 256
 
-It slices the FIRST ``--rows`` papers off the full snapshot (which is already
-sorted by id) and writes a compact snapshot + matching ``ids.npy``, so the
-embed chunks, the FAISS index, the API and ``smoke_api.py`` all stay
-positionally aligned with zero manual wiring.
+The program slices the FIRST ``--rows`` papers off the full snapshot. The
+snapshot is already sorted by id. It writes a compact snapshot and a
+matching ``ids.npy``. The embed chunks, the FAISS index, the API, and
+``smoke_api.py`` then stay positionally aligned with no manual wiring.
 """
 
 from __future__ import annotations
@@ -46,7 +46,7 @@ def main() -> int:
     args = parser.parse_args()
 
     if args.rows <= 0:
-        print(f"error: --rows must be positive, got {args.rows}", file=sys.stderr)
+        print(f"error: --rows requires a positive value, got {args.rows}", file=sys.stderr)
         return 1
 
     # 1/3 — subset the snapshot (full snapshot stays untouched on disk)
@@ -68,7 +68,7 @@ def main() -> int:
 
     # 2/3 — embed with live progress
     t0 = time.time()
-    print(f"[2/3] embedding {rows} rows (batch={args.batch})...")
+    print(f"[2/3] embed {rows} rows (batch={args.batch})...")
     encoder = OnnxEncoder()
     encoder.progress = True
     summary = embed_run(
@@ -84,7 +84,7 @@ def main() -> int:
 
     # 3/3 — build the FAISS index from the chunks
     t1 = time.time()
-    print("[3/3] building FAISS index...")
+    print("[3/3] build FAISS index...")
     meta = build_index(
         embeddings_dir=Paths.DATA_EMBEDDINGS,
         manifest_path=Paths.MANIFEST,

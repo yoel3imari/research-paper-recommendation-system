@@ -1,15 +1,16 @@
 """One-shot smoke test against the real build artifacts (not the stub corpus).
 
-Exercises the full stack end-to-end once a real FAISS index + real embeddings
-exist: ``RecommendationService`` with the real snapshot, index ids, and the
-ONNX encoder. Verifies the embed→index→search→metadata chain:
+The script exercises the full stack end-to-end when a real FAISS index and
+real embeddings exist. It uses ``RecommendationService`` with the real
+snapshot, index ids, and the ONNX encoder. It verifies the
+embed→index→search→metadata chain:
 
 1. index loads and reports ``n == snapshot height``
 2. a seeded paper returns ``k`` papers with plausible scores (descending)
 3. a free-text query returns ``k`` papers with descending scores
 4. returned paper ids resolve in the snapshot
 
-Run: ``uv run python smoke_api.py``. Expected to take minutes (index + first
+Run: ``uv run python smoke_api.py``. The run takes minutes (index + first
 service call spin up the IVF and the ONNX model). Idempotent; safe to rerun.
 """
 
@@ -51,7 +52,7 @@ def main() -> int:
     _check(r.status_code == 200, f"GET /recommend/paper/{seed} -> {r.status_code}")
     body = r.json()
     recs = body["results"]
-    _check(len(recs) == 5, f"returned {len(recs)} recs (expect 5)")
+    _check(len(recs) == 5, f"returned {len(recs)} results (expect 5)")
     scores = [x["score"] for x in recs]
     _check(all(b > e for b, e in zip(scores, scores[1:], strict=False)),
            f"scores descending {scores}")
@@ -61,10 +62,10 @@ def main() -> int:
     qrecs = q.json()["results"]
     qscores = [x["score"] for x in qrecs]
     _check(len(qrecs) == 5 and all(b >= e for b, e in zip(qscores, qscores[1:], strict=False)),
-           f"query k=5 scores desc {qscores}")
+           f"query k=5 scores descending {qscores}")
     _check(all(x["paper"]["id"] for x in qrecs), "returned ids non-empty")
 
-    print(f"[{(time.time()-t0):.1f}s] smoke test PASSED: api + index + embed chain ok")
+    print(f"[{(time.time()-t0):.1f}s] smoke test PASSED: api + index + embed chain verified")
     return 0
 
 

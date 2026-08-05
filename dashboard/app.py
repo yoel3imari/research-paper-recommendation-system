@@ -7,7 +7,8 @@ Implements Phase 6 of the project (docs/architecture.md §6):
 UI per card: title (link), similarity score badge, category chips, authors,
 publication date, abstract expander, "View on arXiv" button.
 
-Uses @st.cache_data on API calls. API_BASE_URL from env (default localhost:8000).
+Use @st.cache_data on API calls. API_BASE_URL comes from the environment
+(default localhost:8000).
 """
 
 import os
@@ -35,7 +36,7 @@ def search_papers(query: str, limit: int = 10) -> dict[str, Any]:
         PaperSearchResponse dict with results and total
         
     Raises:
-        requests.RequestException: If API request fails
+        requests.RequestException: If the API request fails
     """
     url = f"{API_BASE_URL}/papers/search"
     params = {"q": query, "limit": limit}
@@ -45,7 +46,7 @@ def search_papers(query: str, limit: int = 10) -> dict[str, Any]:
         response.raise_for_status()
         return response.json()
     except requests.RequestException as e:
-        st.error(f"Error searching papers: {e}")
+        st.error(f"Paper search failed: {e}")
         return {"results": [], "total": 0}
 
 
@@ -68,7 +69,7 @@ def recommend_query(
         RecommendResponse dict with results and metadata
         
     Raises:
-        requests.RequestException: If API request fails
+        requests.RequestException: If the API request fails
     """
     url = f"{API_BASE_URL}/recommend/query"
     params: dict[str, str | int] = {"q": query, "k": k}
@@ -83,7 +84,7 @@ def recommend_query(
         response.raise_for_status()
         return response.json()
     except requests.RequestException as e:
-        st.error(f"Error getting recommendations: {e}")
+        st.error(f"Recommendation request failed: {e}")
         return {"query": query, "k": k, "took_ms": 0.0, "results": []}
 
 
@@ -97,7 +98,7 @@ def recommend_paper(
     """Get recommendations based on a seed paper.
     
     Args:
-        arxiv_id: arXiv identifier (e.g., "2006.00001")
+        arxiv_id: arXiv identifier (for example, "2006.00001")
         k: Number of recommendations to return
         year_min: Minimum publication year (optional)
         categories: Category filters (optional)
@@ -106,7 +107,7 @@ def recommend_paper(
         RecommendResponse dict with results and metadata
         
     Raises:
-        requests.RequestException: If API request fails
+        requests.RequestException: If the API request fails
     """
     url = f"{API_BASE_URL}/recommend/paper/{arxiv_id}"
     params: dict[str, str | int] = {"k": k}
@@ -121,12 +122,12 @@ def recommend_paper(
         response.raise_for_status()
         return response.json()
     except requests.RequestException as e:
-        st.error(f"Error getting recommendations for paper {arxiv_id}: {e}")
+        st.error(f"Recommendation request for paper {arxiv_id} failed: {e}")
         return {"query": arxiv_id, "k": k, "took_ms": 0.0, "results": []}
 
 
 def format_categories(categories: list[str]) -> str:
-    """Format categories as comma-separated string."""
+    """Format categories as a comma-separated string."""
     return ", ".join(categories)
 
 
@@ -199,7 +200,7 @@ def interest_query_mode() -> None:
         "Research Interest",
         height=100,
         placeholder=(
-            "e.g., 'retrieval augmented generation for code', "
+            "for example, 'retrieval augmented generation for code', "
             "'efficient transformers inference'"
         )
     )
@@ -222,7 +223,7 @@ def interest_query_mode() -> None:
         
         # Categories (optional)
         categories = st.text_area(
-            "Category filters (comma-separated, e.g., 'cs.LG, cs.AI')",
+            "Category filters (comma-separated, for example, 'cs.LG, cs.AI')",
             height=80,
             placeholder="Leave empty for all categories"
         )
@@ -238,7 +239,7 @@ def interest_query_mode() -> None:
             st.error("Please enter a research interest.")
             return
         
-        with st.spinner("Searching for recommendations..."):
+        with st.spinner("Search for recommendations..."):
             response = recommend_query(
                 query=query.strip(),
                 k=k,
@@ -255,7 +256,7 @@ def interest_query_mode() -> None:
                     render_paper_card(rec["paper"], rec["score"])
                     st.markdown("---")
             else:
-                st.info("No recommendations found. Try adjusting your query or filters.")
+                st.info("No recommendations found. Adjust your query or filters.")
 
 
 def seed_paper_mode() -> None:
@@ -287,13 +288,13 @@ def seed_paper_mode() -> None:
                 value=MIN_YEAR,
                 help="Filter papers published in or after this year (set to min to disable)"
             )
-            # If user wants to disable year filter, set to min value
+            # If the user wants to disable the year filter, set it to the minimum value.
             if year_min == MIN_YEAR:
                 year_min = None
             
             # Categories (optional)
             categories = st.text_area(
-                "Category filters (comma-separated, e.g., 'cs.LG, cs.AI')",
+                "Category filters (comma-separated, for example, 'cs.LG, cs.AI')",
                 height=80,
                 placeholder="Leave empty for all categories"
             )
@@ -306,7 +307,7 @@ def seed_paper_mode() -> None:
         # Search input
         seed_query = st.text_input(
             "Search for a paper by title or keywords",
-            placeholder="e.g., 'attention mechanism', 'transformer architecture'"
+            placeholder="for example, 'attention mechanism', 'transformer architecture'"
         )
         
         # Search button
@@ -315,7 +316,7 @@ def seed_paper_mode() -> None:
                 st.error("Please enter a search query.")
                 return
             
-            with st.spinner("Searching for papers..."):
+            with st.spinner("Search for papers..."):
                 search_response = search_papers(seed_query.strip(), limit=10)
                 
                 if search_response.get("results"):
@@ -343,7 +344,7 @@ def seed_paper_mode() -> None:
                         st.markdown(f"**arXiv ID:** {selected_paper['id']}")
                         
                         if st.button("Get Similar Papers", type="secondary"):
-                            with st.spinner("Getting recommendations..."):
+                            with st.spinner("Get recommendations..."):
                                 response = recommend_paper(
                                     selected_paper["id"],
                                     k=k,
@@ -360,7 +361,7 @@ def seed_paper_mode() -> None:
                                         render_paper_card(rec["paper"], rec["score"])
                                         st.markdown("---")
                                 else:
-                                    st.info("No similar papers found. Try adjusting filters.")
+                                    st.info("No similar papers found. Adjust the filters.")
                 else:
                     st.error("No papers found. Try a different search query.")
 

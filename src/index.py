@@ -1,29 +1,34 @@
 """FAISS vector-index build/search (docs/architecture.md §4.3).
 
-Builds a quantized index from the chunked embeddings produced by
-``src/embed.py`` (one ``.npy`` per chunk + ``manifest.json``):
+Builds a quantized index from the chunked embeddings that ``src/embed.py``
+produces (one ``.npy`` per chunk and one ``manifest.json``):
 
-1. Train on a representative sample (FAISS rule: ``n_train >= nlist``,
-   ideally ``>= 30 * nlist``; default 10% via ``IndexParams.TRAIN_FRACTION``).
-2. Stream each chunk into ``index.add()`` — the full ``(N, d)`` matrix is
-   **never materialized in RAM** (that would cost ~3.66GB at full corpus).
-3. Checkpoint via ``faiss.write_index()`` every ``CHECKPOINT_EVERY`` rows
-   (index inserts are deterministic, so resumes are exact).
-4. Save the index plus ``index_meta.json`` (profile, d, n, search params).
+1. Train on a representative sample. FAISS requires ``n_train >= nlist``,
+   ideally ``>= 30 * nlist``. The default is 10% via
+   ``IndexParams.TRAIN_FRACTION``.
+2. Stream each chunk into ``index.add()``. Never materialize the full
+   ``(N, d)`` matrix in RAM; at full corpus it costs ~3.66GB.
+3. Checkpoint with ``faiss.write_index()`` every ``CHECKPOINT_EVERY`` rows.
+   Index inserts are deterministic, so resumes are exact.
+4. Save the index plus ``index_meta.json`` with profile, d, n, and search
+   params.
 
-**Memory approach**: the IVF training sample is bounded to
-``train_fraction`` rows *per chunk* (loaded through ``np.load(..., mmap_mode)``
-and sliced), so peak memory is one chunk buffer plus the train fraction of the
-corpus — never the full matrix. ``nlist`` is clamped to ``n_train // 4``
-(via ``clamp_nlist``) so tiny synthetic corpora train without hard failure.
+**Memory approach**: the IVF training sample has at most ``train_fraction``
+rows per chunk. Each chunk loads as a memmap through ``np.load(..., mmap_mode)``
+and slices to the sample rows. Peak memory is one chunk buffer plus the train
+fraction of the corpus, never the full matrix. ``clamp_nlist`` clamps
+``nlist`` to ``n_train // 4``, so tiny synthetic corpora train without hard
+failure.
 
-**Profiles**: ``ivf-sq8`` (default) — ``IndexIVFScalarQuantizer`` (QT_8bit),
-``METRIC_INNER_PRODUCT``, ``nprobe=64``; ``hnsw`` — ``IndexHNSWFlat``
-(``efConstruction=200``, ``efSearch=64``) for the CS-subset benchmark.
+**Profiles**: ``ivf-sq8`` (default) uses ``IndexIVFScalarQuantizer`` with
+``QT_8bit``, ``METRIC_INNER_PRODUCT``, and ``nprobe=64``. ``hnsw`` uses
+``IndexHNSWFlat`` with ``efConstruction=200`` and ``efSearch=64`` for the
+CS-subset benchmark.
 
-Rows are added in chunk order, so FAISS row label ``i`` ↔ snapshot row ``i``
-(positional id alignment; see architecture §4.1). ``FaissVectorIndex`` can map
-those labels through an id array to paper ids at search time.
+Rows are added in chunk order. FAISS row label ``i`` then corresponds to
+snapshot row ``i`` (positional id alignment; see architecture §4.1). At
+search time, ``FaissVectorIndex`` maps those labels through an id array to
+paper ids.
 """
 
 from __future__ import annotations
@@ -37,26 +42,20 @@ import faiss
 import numpy as np
 
 from .config import IndexParams, Paths
+from .embed import load_manifest
 
 logger = logging.getLogger(__name__)
-
-
-def load_manifest(manifest_path: Path) -> dict[str, dict]:
-    """Read the manifest JSON; ``{}`` when absent (mirrors ``src.embed``)."""
-    if not manifest_path.exists():
-        return {}
-    with manifest_path.open() as fh:
-        return json.load(fh)
 
 
 def iter_chunk_paths(
     embeddings_dir: Path, manifest: dict[str, dict]
 ) -> list[tuple[int, Path]]:
-    """Return ``(chunk_index, path)`` for each complete chunk, in row order.
+    """Returns ``(chunk_index, path)`` for each complete chunk, in row order.
 
-    Chunks are ordered by ascending index so the global add order matches the
-    canonical snapshot row order (row ``i`` of the index ↔ snapshot row ``i``).
-    A manifest entry whose ``.npy`` file is missing is skipped.
+    Chunks appear in ascending index order. The global add order then matches
+    the canonical snapshot row order; row ``i`` of the index corresponds to
+    snapshot row ``i``. The function skips a manifest entry whose ``.npy``
+    file is missing.
     """
     paths: list[tuple[int, Path]] = []
     for chunk_index in sorted(manifest, key=int):
@@ -67,12 +66,12 @@ def iter_chunk_paths(
 
 
 def clamp_nlist(nlist: int, n_train: int) -> int:
-    """Clamp ``nlist`` to a value FAISS can train for ``n_train`` vectors.
+    """Clamps ``nlist`` to a value that satisfies ``n_train >= nlist``.
 
-    FAISS requires ``n_train >= nlist`` (ideally ``>= 30 * nlist``). Tiny
-    synthetic corpora would otherwise hard-fail with the configured
-    ``nlist=8192``; clamping to ``n_train // 4`` (minimum 1) keeps the build
-    runnable at any scale.
+    FAISS requires ``n_train >= nlist``, ideally ``>= 30 * nlist``. Tiny
+    synthetic corpora hard-fail with the configured ``nlist=8192``. The clamp
+    to ``n_train // 4``, with a minimum of 1, keeps the build runnable at any
+    scale.
     """
     if n_train <= 0:
         return 1
@@ -80,11 +79,11 @@ def clamp_nlist(nlist: int, n_train: int) -> int:
 
 
 def make_index(profile: str, d: int, nlist: int | None = None) -> faiss.Index:
-    """Construct an empty, untrained FAISS index for ``profile``.
+    """Constructs an empty, untrained FAISS index for ``profile``.
 
-    ``ivf-sq8`` → ``IndexIVFScalarQuantizer`` (QT_8bit, inner product);
-    ``hnsw`` → ``IndexHNSWFlat``. Returns the raw index; the caller must
-    ``train()`` IVF indexes before ``add()``.
+    ``ivf-sq8`` produces an ``IndexIVFScalarQuantizer`` (QT_8bit, inner
+    product). ``hnsw`` produces an ``IndexHNSWFlat``. Returns the raw index.
+    Train IVF indexes before ``add()``.
     """
     nlist = nlist or IndexParams.NLIST
     if profile == IndexParams.PROFILE_HNSW:
@@ -109,10 +108,10 @@ def make_index(profile: str, d: int, nlist: int | None = None) -> faiss.Index:
 def _train_sample(
     chunk_paths: list[tuple[int, Path]], train_fraction: float, d: int
 ) -> np.ndarray:
-    """Collect a bounded training sample: ``train_fraction`` rows per chunk.
+    """Collects a bounded training sample: ``train_fraction`` rows per chunk.
 
-    Each chunk is loaded as a read-only memmap and sliced, so only the sample
-    rows are copied into RAM (one chunk buffer at a time).
+    Loads each chunk as a read-only memmap and slices it. Copies only the
+    sample rows into RAM, one chunk buffer at a time.
     """
     parts: list[np.ndarray] = []
     for _, path in chunk_paths:
@@ -157,15 +156,16 @@ def build_index(
     checkpoint_every: int | None = None,
     nlist: int | None = None,
 ) -> dict:
-    """Build a FAISS index from chunked embeddings (architecture §4.3).
+    """Builds a FAISS index from chunked embeddings (architecture §4.3).
 
-    Streams ``chunk_{n:05d}.npy`` files (see ``src.embed``) into
-    ``index.add()`` without concatenating the full matrix; trains IVF on a
-    bounded sample; checkpoints every ``checkpoint_every`` rows; writes the
-    index and ``index_meta.json``. Returns the meta dict.
+    Streams ``chunk_{n:05d}.npy`` files (see ``src.embed``) into ``index.add()``.
+    It does not concatenate the full matrix. Trains IVF on a bounded sample.
+    Checkpoints every ``checkpoint_every`` rows. Writes the index and
+    ``index_meta.json``. Returns the meta dict.
 
-    Raises ``FileNotFoundError`` when the embeddings dir/manifest contains no
-    complete chunks (the real embeddings may not exist yet on a fresh machine).
+    When the embeddings dir/manifest contains no complete chunks, raises
+    ``FileNotFoundError``. On a fresh machine, the real embeddings do not
+    exist yet.
     """
     embeddings_dir = embeddings_dir or Paths.DATA_EMBEDDINGS
     manifest_path = manifest_path or Paths.MANIFEST
@@ -216,7 +216,7 @@ def build_index(
 
 
 def load_index(index_path: Path | None = None) -> faiss.Index:
-    """Load a FAISS index from disk (default ``Paths.INDEX``)."""
+    """Loads a FAISS index from disk. Defaults to ``Paths.INDEX``."""
     return faiss.read_index(str(index_path or Paths.INDEX))
 
 
@@ -224,8 +224,9 @@ def load_index(index_path: Path | None = None) -> faiss.Index:
 class VectorIndex(Protocol):
     """Contract for a searchable vector index (architecture §5).
 
-    Keeps the swap-in story (FAISS today, a vector DB later) without building
-    it; ``FaissVectorIndex`` is the concrete implementation.
+    Enables a future swap-in, FAISS today and a vector DB later. The protocol
+    does not build the swap-in. ``FaissVectorIndex`` is the concrete
+    implementation.
     """
 
     def search(self, query: np.ndarray, k: int) -> tuple[np.ndarray, np.ndarray]: ...
@@ -234,10 +235,11 @@ class VectorIndex(Protocol):
 class FaissVectorIndex:
     """FAISS-backed ``VectorIndex`` with optional id alignment.
 
-    Wraps a built index and an optional ``ids`` array mapping each FAISS row
-    label to a paper id (row ``i`` of the index ↔ ``ids[i]``; architecture
-    §4.1). ``search`` returns ``(scores, labels)`` where ``labels`` are FAISS
-    row labels, mapped through ``ids`` when provided.
+    Wraps a built index and an optional ``ids`` array. The ``ids`` array maps
+    each FAISS row label to a paper id; row ``i`` of the index corresponds to
+    ``ids[i]`` (architecture §4.1). ``search`` returns ``(scores, labels)``,
+    where ``labels`` are FAISS row labels. When ``ids`` is provided, the
+    function maps ``labels`` through ``ids``.
     """
 
     def __init__(self, index: faiss.Index, ids: np.ndarray | None = None) -> None:

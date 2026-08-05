@@ -249,9 +249,9 @@ hand-judging. Example top hits from the live API:
 
 | Query | Top hit | Score |
 |---|---|---|
-| "retrieval augmented generation for code" | *Code Attention: Translating Code to Comments…* | 0.54 |
-| "graph neural networks" | Graph-nn paper in corpus | 0.72 |
-| seed `1706.03762` (Attention is All you Need) | 5 transformer/attention papers | 0.99 → 0.79 |
+| "retrieval augmented generation for code" | *Code Attention: Translating Code to Comments by Exploiting Domain Features* | 0.538 |
+| "graph neural networks" | *Residual Gated Graph ConvNets* | 0.721 |
+| seed `1706.03762` (Attention is All You Need) | 5 transformer/attention papers | 0.989 → 0.787 |
 
 ## Session Notes
 

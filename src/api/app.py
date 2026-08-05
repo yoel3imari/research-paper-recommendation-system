@@ -1,11 +1,13 @@
-"""FastAPI application + cached recommendation service (docs/architecture.md §5).
+"""FastAPI application and cached recommendation service (docs/architecture.md §5).
 
-The ``RecommendationService`` is the single heavyweight object: it loads the
-snapshot (metadata + title-search index), the FAISS vector index, and the ONNX
-encoder once and caches them. Routes get it via ``get_service`` (overridable
-for offline tests). We load at lifespan startup; if the artifacts are missing
-(e.g. the embed hasn't run yet) we log a warning but keep serving metadata
-and /health — they fail cleanly on request.
+The ``RecommendationService`` is the single heavyweight object. It loads the
+snapshot (metadata and title-search index), the FAISS vector index, and the
+ONNX encoder once. Routes receive the service through ``get_service``. Tests
+override this dependency for offline tests.
+
+The lifespan loads the service at startup. If the artifacts are missing (for
+example, the embed has not run), the app logs a warning. The metadata and
+/health endpoints stay available. They fail cleanly on request.
 """
 
 from __future__ import annotations
@@ -20,12 +22,11 @@ import polars as pl
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from src.config import ModelConfig, Paths
-from src.embed import OnnxEncoder
-from src.index import load_index
-
+from ..config import ModelConfig, Paths
+from ..embed import OnnxEncoder
+from ..index import load_index
 from .router import router
-from .schemas import Paper
+from .schemas import Paper, paper_from_meta
 
 logger = logging.getLogger(__name__)
 
@@ -75,7 +76,7 @@ class RecommendationService:
                 "year": int(dates[i][:4]) if dates[i] else 0,
             }
             self.metadata.append(meta)
-            self.by_id[meta["id"]] = _meta_to_paper(meta)
+            self.by_id[meta["id"]] = paper_from_meta(meta)
         self.n_papers = len(ids_column)
         self._titles_lower = [(t or "").lower() for t in titles]
 
@@ -125,18 +126,6 @@ def _split_authors(raw) -> list[str]:
     return [a.strip() for a in str(raw).split(",") if a.strip()]
 
 
-def _meta_to_paper(meta: dict) -> Paper:
-    return Paper(
-        id=meta["id"],
-        title=meta["title"],
-        abstract=meta["abstract"],
-        authors=meta["authors"],
-        categories=meta["categories"],
-        update_date=meta["update_date"],
-        arxiv_url=f"https://arxiv.org/abs/{meta['id']}",
-    )
-
-
 @lru_cache(maxsize=1)
 def cached_service() -> RecommendationService:
     """Load (and cache) the singleton service; used by ``get_service``/lifespan."""
@@ -145,7 +134,7 @@ def cached_service() -> RecommendationService:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Warm the service on startup; degrade gracefully if artifacts are missing."""
+    """Warm the service at startup. If the artifacts are missing, degrade gracefully."""
     try:
         svc = cached_service()
         logger.info("RecommendationService loaded (papers=%d)", svc.n_papers)
@@ -163,8 +152,8 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title="arXiv Recommendation API",
         description=(
-            "Item-to-item and query-to-item arXiv paper recommendations "
-            "(cs.AI/cs.LG/cs.CL corpus) via ONNX embeddings + FAISS."
+            "Item-to-item and query-to-item arXiv paper recommendations for the "
+            "cs.AI, cs.LG, and cs.CL corpus. It uses ONNX embeddings and FAISS."
         ),
         version="0.1.0",
         lifespan=lifespan,

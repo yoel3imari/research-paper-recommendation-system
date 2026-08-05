@@ -1,9 +1,10 @@
 """API router for the arXiv recommendation endpoints (docs/architecture.md §5).
 
-Endpoints are plain ``def`` (FastAPI threadpool): FAISS ``search`` is
-thread-safe for concurrent reads, while ONNX encode is guarded by a single
-``threading.Lock`` inside the service. The heavyweight service (snapshot,
-FAISS index, ONNX encoder) is loaded once and cached.
+Endpoints are plain ``def`` functions (FastAPI threadpool). FAISS ``search``
+is thread-safe for concurrent reads. ONNX encode uses a single
+``threading.Lock`` inside the service. Do not use ``async def`` for blocking
+work. The heavyweight service loads the snapshot, FAISS index, and ONNX
+encoder once and caches them.
 """
 
 from __future__ import annotations
@@ -13,22 +14,28 @@ import time
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from .schemas import Paper, PaperSearchResponse, Recommendation, RecommendResponse
+from .schemas import (
+    Paper,
+    PaperSearchResponse,
+    Recommendation,
+    RecommendResponse,
+    paper_from_meta,
+)
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-# How many candidates to fetch from FAISS before post-filtering.
+# Fetch this many candidates from FAISS before post-filtering.
 FETCH_K = 100
 
 
 # ── Service dependency ─────────────────────────────────────────────────────
 def get_service():
-    """Return the cached RecommendationService (overridable in tests).
+    """Return the cached ``RecommendationService`` (overridable in tests).
 
-    Tests inject a stub service via ``app.dependency_overrides`` so the real
-    model/index are never loaded in the test suite.
+    Tests inject a stub service through ``app.dependency_overrides``. The real
+    model and index are never loaded in the test suite.
     """
     from .app import cached_service
 
@@ -42,22 +49,13 @@ _service = Depends(get_service)
 # ── Response builders (pure, testable) ─────────────────────────────────────
 def _paper_from_row(service, row_label: int) -> Paper:
     """Build a ``Paper`` schema for the given snapshot row (FAISS label)."""
-    meta = service.metadata[row_label]
-    return Paper(
-        id=meta["id"],
-        title=meta["title"],
-        abstract=meta["abstract"],
-        authors=meta["authors"],
-        categories=meta["categories"],
-        update_date=meta["update_date"],
-        arxiv_url=f"https://arxiv.org/abs/{meta['id']}",
-    )
+    return paper_from_meta(service.metadata[row_label])
 
 
 def _recommend(
     service, query_text: str, k: int, year_min: int | None, categories: set[str]
 ) -> RecommendResponse:
-    """Embed the query, ANN-search ``FETCH_K``, post-filter, rank, return top-``k``."""
+    """Embed the query, ANN-search ``FETCH_K``, post-filter, rank, and return the top ``k``."""
     t0 = time.perf_counter()
     scores, labels = service.search_query(query_text, FETCH_K)
 
@@ -90,11 +88,14 @@ def health(service=_service) -> dict:
 
 @router.get("/papers/search", response_model=PaperSearchResponse)
 def search_papers(
-    q: str = Query(..., min_length=1, description="title substring/keyword"),
+    q: str = Query(..., min_length=1, description="Paper title substring or keyword"),
     limit: int = Query(10, ge=1, le=100),
     service=_service,
 ) -> PaperSearchResponse:
-    """Title-picker: case-insensitive title substring match (dashboard seed picker)."""
+    """Title picker for the dashboard.
+
+    Return papers whose title contains ``q`` (case-insensitive).
+    """
     labels = service.title_matches(q, limit)
     return PaperSearchResponse(
         results=[_paper_from_row(service, label) for label in labels],
@@ -102,9 +103,9 @@ def search_papers(
     )
 
 
-# NOTE: registered BEFORE the ``/papers/{arxiv_id}`` route below so the literal
-# path ``/papers/search`` wins over the path-parameter match (FastAPI matches
-# routes in registration order).
+# NOTE: register this route BEFORE the ``/papers/{arxiv_id}`` route below.
+# The literal path ``/papers/search`` wins over the path-parameter match.
+# FastAPI matches the routes in registration order.
 @router.get("/papers/{arxiv_id}", response_model=Paper)
 def get_paper(arxiv_id: str, service=_service) -> Paper:
     """Full metadata for one paper by arXiv id."""
@@ -116,13 +117,13 @@ def get_paper(arxiv_id: str, service=_service) -> Paper:
 
 @router.get("/recommend/query", response_model=RecommendResponse)
 def recommend_query(
-    q: str = Query(..., min_length=1, description="free-text interest query"),
+    q: str = Query(..., min_length=1, description="Free-text research interest query"),
     k: int = Query(10, ge=1, le=100),
     year_min: int | None = Query(None, ge=1991, le=2030),
-    categories: str | None = Query(None, description="comma-separated category prefixes"),
+    categories: str | None = Query(None, description="Comma-separated category prefixes"),
     service=_service,
 ) -> RecommendResponse:
-    """User-to-item: embed free text and return top-``k`` similar papers."""
+    """User-to-item. Embed the free text and return the top ``k`` similar papers."""
     cat_list = _parse_categories(categories)
     return _recommend(service, q, k, year_min, cat_list)
 
@@ -132,10 +133,14 @@ def recommend_paper(
     arxiv_id: str,
     k: int = Query(10, ge=1, le=100),
     year_min: int | None = Query(None, ge=1991, le=2030),
-    categories: str | None = Query(None, description="comma-separated category prefixes"),
+    categories: str | None = Query(None, description="Comma-separated category prefixes"),
     service=_service,
 ) -> RecommendResponse:
-    """Item-to-item: embed that paper's title+abstract → top-``k`` similar papers."""
+    """Item-to-item recommendations.
+
+    Embed the paper title and abstract, then return the top ``k`` similar
+    papers.
+    """
     target = service.by_id.get(arxiv_id)
     if target is None:
         raise HTTPException(status_code=404, detail=f"paper {arxiv_id} not found")
@@ -145,7 +150,7 @@ def recommend_paper(
 
 
 def _parse_categories(raw: str | None) -> set[str]:
-    """Comma-separated category prefixes/ids → a set of exact tokens (or empty)."""
+    """Parse comma-separated category prefixes and ids into exact tokens (or an empty set)."""
     if not raw:
         return set()
     return {c.strip() for c in raw.split(",") if c.strip()}

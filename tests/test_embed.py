@@ -1,8 +1,8 @@
-"""Tests for src.embed.py (docs/architecture.md §8, test_embed).
+"""This module tests src.embed.py. See docs/architecture.md §8, test_embed.
 
-Uses a stub ``Encoder`` — the real ONNX model is never constructed here (it
-would download ``model_quint8_avx2.onnx`` + tokenizer), so these tests run
-fully offline with no network access.
+The tests use a stub ``Encoder``. The tests never construct the real ONNX
+model. The real model downloads ``model_quint8_avx2.onnx`` and the tokenizer.
+Therefore, these tests run fully offline with no network access.
 """
 
 from __future__ import annotations
@@ -29,7 +29,7 @@ DIM = 384
 
 
 class StubEncoder:
-    """Deterministic L2-normalized stub standing in for the ONNX model."""
+    """This deterministic stub replaces the ONNX model and returns L2-normalized vectors."""
 
     dim = DIM
 
@@ -140,7 +140,7 @@ class TestWriteChunk:
 
 
 def _snapshot(n_rows: int, tmp_path) -> Path:
-    """Write a minimal snapshot parquet; return its path."""
+    """Write a minimal snapshot parquet and return its path."""
     df = pl.DataFrame(
         {
             "id": [str(i) for i in range(n_rows)],

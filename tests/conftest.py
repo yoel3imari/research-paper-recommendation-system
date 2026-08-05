@@ -1,4 +1,4 @@
-"""Shared fixtures for the test suite (docs/architecture.md §8)."""
+"""This module provides the shared fixtures for the test suite. See docs/architecture.md §8."""
 
 from __future__ import annotations
 
@@ -8,14 +8,15 @@ import pytest
 
 @pytest.fixture
 def synthetic_papers() -> pl.DataFrame:
-    """Tiny synthetic corpus (3 categories) including ingest edge cases.
+    """This fixture builds a tiny synthetic corpus with three categories.
 
-    Covers: one cross-shard duplicate id, one empty title, one whitespace-only
-    abstract, one null-category row, one non-matching category, and out-of-order
-    ids so the sort invariant is actually exercised.
+    The corpus includes eight rows. It has one cross-shard duplicate id,
+    one empty title, one whitespace-only abstract, one null-category row,
+    and one non-matching category. The ids are out of order. This
+    exercises the sort invariant.
     """
     rows = [
-        # (id, title, abstract, categories)
+        # The tuple fields are id, title, abstract, and categories.
         (
             "1001.0001",
             "Attention is all you need",

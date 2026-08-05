@@ -1,25 +1,26 @@
 """Chunked embedding pipeline (docs/architecture.md §4.2).
 
-Encodes the snapshot into L2-normalized 384-dim vectors: each row contributes
-``title + " " + abstract``. Output is one ``.npy`` per fixed chunk plus a
-``manifest.json`` recording ``{n: {start, end, rows, shape}}`` per chunk,
-enabling crash-safe resume — a chunk present in the manifest with a matching
-shape is complete and is skipped on rerun (atomic chunks; no per-id
-bookkeeping).
+Encodes the snapshot into L2-normalized 384-dim vectors. Each row contributes
+``title + " " + abstract``. Outputs one ``.npy`` file per fixed chunk and one
+``manifest.json``. The manifest records ``{n: {start, end, rows, shape}}``
+per chunk. A chunk in the manifest with a matching shape is complete, and
+the rerun skips it. This enables crash-safe resume with atomic chunks and no
+per-id bookkeeping.
 
-The encoder sits behind an ``Encoder`` protocol so unit tests substitute a
-stub. The real ``OnnxEncoder`` (dynamic UINT8 ONNX via a bare
-``onnxruntime.InferenceSession``) loads its heavy deps only on instantiation,
-never at import time, so importing this module performs no network access and
-loads no model.
+The encoder sits behind an ``Encoder`` protocol. Unit tests substitute a stub
+for the protocol. The real ``OnnxEncoder`` (dynamic UINT8 ONNX through a bare
+``onnxruntime.InferenceSession``) loads its heavy dependencies only on
+instantiation, never at import time. Importing this module performs no
+network access and loads no model.
 
-The encoder runs ONNX directly through ``onnxruntime`` rather than via
-``optimum``. ``optimum[onnxruntime]``'s lazy-import structure is incompatible
-with the pinned wheel set on this Intel Mac (it imports ``optimum.exporter.
-onnx.main_export`` at top level, which the installed ``optimum``/``optimum-onnx``
-versions do not provide), so depending on it breaks the whole runtime path.
-The mean-pooled ``last_hidden_state`` we need is exactly what the BERT ONNX
-graph outputs, so no exporter machinery is required.
+The encoder runs ONNX directly through ``onnxruntime``, not through
+``optimum``. The lazy-import structure of ``optimum[onnxruntime]`` is
+incompatible with the pinned wheel set on this Intel Mac. It imports
+``optimum.exporter.onnx.main_export`` at top level, and the installed
+``optimum`` and ``optimum-onnx`` versions do not provide that module.
+Depending on ``optimum`` breaks the whole runtime path. The mean-pooled
+``last_hidden_state`` we need equals what the BERT ONNX graph outputs, so no
+exporter machinery is required.
 """
 
 from __future__ import annotations
@@ -41,22 +42,22 @@ EPSILON = 1e-12
 
 
 def l2_normalize(vectors: np.ndarray) -> np.ndarray:
-    """L2-normalize rows (cosine similarity via inner product)."""
+    """L2-normalizes the rows so cosine similarity works through inner product."""
     norms = np.linalg.norm(vectors, axis=1, keepdims=True)
     return vectors / np.maximum(norms, EPSILON)
 
 
 def build_texts(df: pl.DataFrame) -> list[str]:
-    """Compose ``title + " " + abstract`` per row (architecture §4.2)."""
+    """Composes ``title + " " + abstract`` per row (architecture §4.2)."""
     return (df["title"].fill_null("") + " " + df["abstract"].fill_null("")).to_list()
 
 
 def iter_chunks(df: pl.DataFrame, chunk_size: int):
-    """Yield ``(start_row, df_slice)`` for each fixed-size chunk of the snapshot.
+    """Yields ``(start_row, df_slice)`` for each fixed-size chunk of the snapshot.
 
-    ``start`` is the absolute row index in the canonical snapshot (row ``i`` of
-    every artifact corresponds to snapshot row ``i``), so the ``chunk_{n}.npy``
-    outputs stay positionally aligned with the snapshot.
+    ``start`` is the absolute row index in the canonical snapshot. Row ``i`` of
+    every artifact corresponds to snapshot row ``i``. Therefore the
+    ``chunk_{n}.npy`` outputs stay positionally aligned with the snapshot.
     """
     for start in range(0, df.height, chunk_size):
         yield start, df.slice(start, chunk_size)
@@ -64,7 +65,7 @@ def iter_chunks(df: pl.DataFrame, chunk_size: int):
 
 @runtime_checkable
 class Encoder(Protocol):
-    """Any object that turns texts into an L2-normalized ``(N, dim)`` matrix."""
+    """An object that encodes texts into an L2-normalized ``(N, dim)`` matrix."""
 
     dim: int
 
@@ -72,10 +73,10 @@ class Encoder(Protocol):
 
 
 class OnnxEncoder:
-    """Real encoder: tokenizer + dynamic UINT8 ONNX (all-MiniLM-L6-v2).
+    """Real encoder: tokenizer and dynamic UINT8 ONNX (all-MiniLM-L6-v2).
 
-    Heavy imports live in ``__init__`` only (instantiation), so tests that
-    never construct this object stay free of the model stack and of network.
+    Heavy imports run only inside ``__init__``, at instantiation. Tests that
+    never construct this object load no model stack and no network.
     """
 
     def __init__(
@@ -94,8 +95,8 @@ class OnnxEncoder:
             model_dir / onnx_file,
             providers=["CPUExecutionProvider"],
         )
-        # Set True to print per-batch progress (stderr) — makes long encodes
-        # visibly advance instead of looking hung between chunk writes.
+        # Set this to True to print per-batch progress to stderr. The progress
+        # shows that a long encode advances instead of hanging between chunks.
         self.progress = False
 
     def encode_texts(self, texts: list[str], batch_size: int) -> np.ndarray:
@@ -131,12 +132,12 @@ def encode_chunk(
     encoder: Encoder,
     batch_size: int = ModelConfig.BATCH_SIZE,
 ) -> np.ndarray:
-    """Encode one chunk. Result is L2-normalized ``(len(texts), dim)``."""
+    """Encodes one chunk. The result is L2-normalized ``(len(texts), dim)``."""
     return encoder.encode_texts(texts, batch_size=batch_size)
 
 
 def load_manifest(manifest_path: Path) -> dict[str, dict]:
-    """Read the manifest JSON; ``{}`` when absent."""
+    """Reads the manifest JSON. Returns ``{}`` when the manifest is absent."""
     if not manifest_path.exists():
         return {}
     with manifest_path.open() as fh:
@@ -144,7 +145,7 @@ def load_manifest(manifest_path: Path) -> dict[str, dict]:
 
 
 def save_manifest(manifest: dict[str, dict], manifest_path: Path) -> None:
-    """Atomically write the manifest (tmp + rename avoids torn writes)."""
+    """Writes the manifest atomically. A temporary file and rename avoid torn writes."""
     tmp = manifest_path.with_name(manifest_path.name + ".tmp")
     tmp.parent.mkdir(parents=True, exist_ok=True)
     with tmp.open("w") as fh:
@@ -158,11 +159,11 @@ def chunk_is_complete(
     rows: int,
     dim: int,
 ) -> bool:
-    """A chunk is complete iff recorded with matching ``rows`` and ``shape``.
+    """A chunk is complete when the manifest records matching ``rows`` and ``shape``.
 
-    ``rows`` must equal the recorded row count and ``shape`` must equal
-    ``(rows, dim)``; any mismatch means the prior ``.npy`` write was torn or
-    truncated and the chunk must be re-encoded.
+    ``rows`` equals the recorded row count, and ``shape`` equals ``(rows, dim)``.
+    Any mismatch indicates a torn or truncated ``.npy`` write from the prior run.
+    The caller then re-encodes the chunk.
     """
     entry = manifest.get(str(chunk_index))
     if entry is None:
@@ -178,7 +179,7 @@ def write_chunk(
     manifest: dict[str, dict],
     manifest_path: Path,
 ) -> None:
-    """Write ``chunk_{n:05d}.npy`` and record its extent in the manifest."""
+    """Writes ``chunk_{n:05d}.npy`` and records its extent in the manifest."""
     embeddings_dir.mkdir(parents=True, exist_ok=True)
     artifact = embeddings_dir / f"chunk_{chunk_index:05d}.npy"
     np.save(artifact, vectors)
@@ -201,10 +202,11 @@ def run(
     batch_size: int | None = None,
     resume: bool = True,
 ) -> dict[str, int]:
-    """Encode the snapshot in chunks with crash-safe resume.
+    """Encodes the snapshot in chunks with crash-safe resume.
 
     Returns a summary dict (``chunks_written``, ``chunks_skipped``). When
-    ``resume`` is true, chunks already complete in the manifest are skipped.
+    ``resume`` is true, the function skips chunks already complete in the
+    manifest.
     """
     snapshot_path = snapshot_path or Paths.SNAPSHOT
     embeddings_dir = embeddings_dir or Paths.DATA_EMBEDDINGS

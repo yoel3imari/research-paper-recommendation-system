@@ -1,8 +1,9 @@
-"""Tests for src.index.py (docs/architecture.md §8, test_index).
+"""This module tests src.index.py. See docs/architecture.md §8, test_index.
 
-Builds and searches tiny synthetic FAISS indexes — no real model, no network,
-no ``src.embed`` encoder. L2-normalized vectors are written directly as chunk
-``.npy`` files plus a manifest, mirroring ``src.embed``'s output layout.
+The tests build and search tiny synthetic FAISS indexes. They use no real
+model, no network, and no ``src.embed`` encoder. The tests write L2-normalized
+vectors directly as chunk ``.npy`` files and a manifest. This format mirrors
+the output layout of ``src.embed``.
 """
 
 from __future__ import annotations
@@ -32,7 +33,7 @@ def _normalize(vectors: np.ndarray) -> np.ndarray:
 
 
 def _write_chunks(tmp_path: Path, rows_per_chunk: int, n_chunks: int) -> Path:
-    """Write synthetic L2-normalized chunk .npy files + manifest; return dir."""
+    """Write synthetic L2-normalized chunk .npy files and a manifest, then return the directory."""
     embeddings_dir = tmp_path / "embeddings"
     embeddings_dir.mkdir(parents=True, exist_ok=True)
     rng = np.random.default_rng(0)
