@@ -224,8 +224,8 @@ MacBook (macOS 12, x86_64). Ground truth: exhaustive `IndexFlatIP`. Full report:
 | Metric | Value |
 |---|---|
 | Recall@10 | 0.9667 |
-| p95 search latency | 1.46 ms |
-| mean search latency | 0.94 ms |
+| p95 search latency | 0.871 ms |
+| mean search latency | 0.534 ms |
 | Index size (on disk) | 12.9 MB |
 
 ### Recommendation quality (category purity@k)

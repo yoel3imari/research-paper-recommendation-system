@@ -27,35 +27,28 @@ ENV UV_COMPILE_BYTECODE=1 \
 
 WORKDIR /app
 
-# Install uv (pinned installer; no network needed at runtime).
-RUN pip install --no-cache-dir uv
+# Install uv (pinned for reproducibility; no network needed at runtime).
+RUN pip install --no-cache-dir uv==0.11.8
 
 # Copy dependency manifests first for layer caching.
 COPY pyproject.toml uv.lock ./
 
-# --no-environments: pyproject.toml pins required-environments to
-#   darwin/x86_64 (the dev laptop). The container builds on linux/amd64, so we
-#   must bypass that gate to resolve the locked wheels.
-# --no-install-project: source is copied separately in the runtime stage, so we
-#   only need the dependency venv here (avoids a build-backend requirement).
-RUN uv sync --frozen --no-dev --no-environments --no-install-project
+# uv's required-environments only constrains resolution, not frozen sync; the
+# universal lockfile already carries the linux/amd64 wheels (faiss, onnxruntime).
+# --no-install-project: source is copied separately in the runtime stage.
+RUN uv sync --frozen --no-dev --no-install-project
 
 # -----------------------------------------------------------------------------
 # Stage 2 — runtime: non-root, lean, serves the API by default
 # -----------------------------------------------------------------------------
 FROM python:3.12-slim AS runtime
 
-# OpenMP thread cap — torch + FAISS both use OpenMP; without capping, cores
-# thrash (architecture §5 concurrency rules). 2 is safe on the 4GB VM.
+# OpenMP thread cap — onnxruntime + FAISS both use OpenMP; without capping,
+# cores thrash (architecture §5 concurrency rules). 2 is safe on the 4GB VM.
 ENV OMP_NUM_THREADS=2 \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PATH="/app/.venv/bin:$PATH"
-
-# curl is required by the compose healthcheck (liveness probe on /health).
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends curl \
-    && rm -rf /var/lib/apt/lists/*
 
 # Non-root user (uid/gid 1000).
 RUN groupadd --system app && useradd --system --gid app --create-home app

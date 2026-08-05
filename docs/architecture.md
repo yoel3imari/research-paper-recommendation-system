@@ -190,9 +190,9 @@ query text / paper text ──► embed (locked, ONNX) ──► FAISS top-100 (
 ### Concurrency rules (from research)
 
 - FAISS `search` is **documented thread-safe** for concurrent reads — no lock.
-- `torch`/ONNX `encode` is **not** guaranteed safe for concurrent forward passes → guard with a single `threading.Lock`.
+- ONNX `encode` is **not** guaranteed safe for concurrent forward passes → guard with a single `threading.Lock`.
 - Plain `def` endpoints (FastAPI threadpool) — never `async def` with blocking encode/search inside.
-- `OMP_NUM_THREADS=2-4` and `faiss.omp_set_num_threads(...)`: torch and FAISS both use OpenMP; without capping, cores thrash (8 threads on the dev laptop, more on M-series).
+- `OMP_NUM_THREADS=2-4` and `faiss.omp_set_num_threads(...)`: onnxruntime and FAISS both use OpenMP; without capping, cores thrash (8 threads on the dev laptop, more on M-series).
 - Model + index loaded once at lifespan startup; `read_index` of 1GB ≈ 2-5s.
 
 ### Schemas (Pydantic v2)
