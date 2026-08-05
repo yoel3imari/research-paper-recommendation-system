@@ -4,9 +4,18 @@ from __future__ import annotations
 
 import numpy as np
 import polars as pl
+import pytest
 
 from src.config import Paths
-from src.ingest import SNAPSHOT_COLUMNS, category_pattern, clean_batch, merge_snapshot
+from src.ingest import (
+    SNAPSHOT_COLUMNS,
+    category_pattern,
+    clean_batch,
+    collect_category_counts,
+    merge_snapshot,
+    scope_pattern,
+    summarize_categories,
+)
 
 CS_FILTER = r"^cs\..*"
 
@@ -76,6 +85,78 @@ class TestCategoryFilter:
         )
         result = clean_batch(raw, category_pattern(CS_FILTER))
         assert result["id"].to_list() == ["a", "c"]
+
+
+class TestScopePattern:
+    def test_full_is_none(self):
+        assert scope_pattern("full") is None
+
+    def test_category_builds_archive_prefix(self):
+        assert scope_pattern("category", category="cs") == r"^cs\."
+
+    def test_category_escapes_regex_special_chars(self):
+        assert scope_pattern("category", category="cs.lg") == r"^cs\.lg\."
+
+    def test_subcategory_builds_exact_match(self):
+        assert scope_pattern("subcategory", subcategory="cs.AI") == r"^cs\.AI$"
+
+    def test_trims_leading_trailing_whitespace(self):
+        assert scope_pattern("category", category="  cs  ") == r"^cs\."
+
+    def test_unknown_scope_raises(self):
+        with pytest.raises(ValueError):
+            scope_pattern("bogus", category="cs")
+
+    def test_missing_category_raises(self):
+        with pytest.raises(ValueError):
+            scope_pattern("category")
+
+    def test_missing_subcategory_raises(self):
+        with pytest.raises(ValueError):
+            scope_pattern("subcategory")
+
+    def test_category_scope_keeps_all_archive_subcategories(self, synthetic_papers):
+        pattern = category_pattern(scope_pattern("category", category="cs"))
+        result = clean_batch(synthetic_papers, pattern)
+        assert result["categories"].to_list() == ["cs.CL", "cs.CL", "cs.LG"]
+
+    def test_subcategory_scope_keeps_exact_id_only(self, synthetic_papers):
+        pattern = category_pattern(scope_pattern("subcategory", subcategory="cs.LG"))
+        result = clean_batch(synthetic_papers, pattern)
+        assert result["categories"].to_list() == ["cs.LG"]
+
+
+class TestCategoryVocabulary:
+    def _raw(self, categories):
+        return pl.DataFrame({"categories": categories})
+
+    def test_counts_tokens_across_batches(self):
+        batches = iter([self._raw(["cs.LG cs.AI", "math.OC", None, "cs.LG"])])
+        counts = collect_category_counts(batches, sample_batches=1)
+        assert counts == {"cs.LG": 2, "cs.AI": 1, "math.OC": 1}
+
+    def test_counts_respect_sample_batches(self):
+        batches = iter([self._raw(["cs.LG"]), self._raw(["math.OC"]), self._raw(["econ.GN"])])
+        counts = collect_category_counts(batches, sample_batches=2)
+        assert counts == {"cs.LG": 1, "math.OC": 1}
+
+    def test_counts_ignore_empty_tokens(self):
+        batches = iter([self._raw(["", "  "])])
+        assert collect_category_counts(batches, sample_batches=1) == {}
+
+    def test_summarize_splits_archives_sorted_by_count(self):
+        counts = {"cs.LG": 3, "cs.AI": 1, "math.OC": 2, "astro-ph": 4}
+        archives, subcategories = summarize_categories(counts)
+        assert archives == [("cs", 4), ("astro-ph", 4), ("math", 2)]
+        assert subcategories == [
+            ("astro-ph", 4),
+            ("cs.LG", 3),
+            ("math.OC", 2),
+            ("cs.AI", 1),
+        ]
+
+    def test_summarize_empty_counts(self):
+        assert summarize_categories({}) == ([], [])
 
 
 class TestMergeSnapshot:

@@ -115,11 +115,32 @@ uv sync
 
 The pipeline is a one-shot batch job: ingest → embed → index.
 
+Ingest lets you choose what to index: **the full dataset, one category**
+(entire archive, e.g. `cs` = every `cs.*` paper), or **one subcategory**
+(single arXiv id, e.g. `cs.AI`). Run it with a flag, or with no flag the CLI
+prompts interactively:
+
 ```bash
-# Full corpus ingest (streams the HF mirror; ~90 min for the full open-arxiv
-# mirror, ~3 min for a 10-batch smoke). Optional: restrict categories, e.g.
-# CORPUS_FILTER='^cs\.(AI|LG|CL)$' uv run python -m src.ingest
-uv run python -m src.ingest
+# See which categories/subcategories are ACTUALLY in the dataset (streams a
+# bounded 50-batch sample and prints each with a paper-count estimate):
+uv run python -m src.ingest --list-categories
+uv run python -m src.ingest --list-categories --sample-batches 10   # smaller sample
+
+uv run python -m src.ingest                  # prompts: full / category / subcategory
+uv run python -m src.ingest --full           # full corpus (~90 min on open-arxiv)
+uv run python -m src.ingest --category cs     # everything under cs.* (e.g. cs.AI, cs.LG)
+uv run python -m src.ingest --subcategory cs.AI  # only cs.AI papers
+```
+
+Picking category/subcategory in the interactive prompt loads that same list
+and offers a numbered picker, so you don't have to know a category id in
+advance; it also warns before accepting a name never seen in the sample.
+
+> Scope flags are mutually exclusive. With no flag and an interactive terminal
+> the CLI prompts for a scope; in a non-interactive shell (CI) a flag is
+> required. The legacy `CORPUS_FILTER` regex env var is still honored when set,
+> e.g. `CORPUS_FILTER='^cs\.(AI|LG|CL)$' uv run python -m src.ingest`.
+> `--max-batches N` limits the run to N batches for a fast smoke test.
 
 # Embed the snapshot (chunked, resumable). On a 30K demo subset this takes
 # minutes; on the full ~400K CS corpus expect hours at ~15-20 papers/sec.
