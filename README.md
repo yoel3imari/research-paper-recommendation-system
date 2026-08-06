@@ -142,8 +142,8 @@ advance; it also warns before accepting a name never seen in the sample.
 > e.g. `CORPUS_FILTER='^cs\.(AI|LG|CL)$' uv run python -m src.ingest`.
 > `--max-batches N` limits the run to N batches for a fast smoke test.
 
-# Embed the snapshot (chunked, resumable). On a 30K demo subset this takes
-# minutes; on the full ~400K CS corpus expect hours at ~15-20 papers/sec.
+Embed the snapshot (chunked, resumable). On a 30K demo subset this takes
+minutes; on the full ~400K CS corpus expect hours at ~15-20 papers/sec.
 uv run python -m src.embed
 
 # Build the FAISS index from the embedding chunks.
