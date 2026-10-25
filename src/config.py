@@ -82,7 +82,6 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     index_path: Path | None = None
-    api_base_url: str = "http://localhost:8000/api/v1"
     omp_num_threads: int | None = None
     corpus_filter: str | None = None
     dataset_name: str = "open-index/open-arxiv"

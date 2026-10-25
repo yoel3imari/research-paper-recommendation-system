@@ -9,7 +9,7 @@
 
 A recommendation system for arXiv research papers. Given either a **seed paper** or a **free-text research interest**, the system returns ranked similar papers from the full arXiv corpus (~2.5M papers).
 
-The system is designed for a portfolio-quality end-to-end demonstration: streaming data ingestion, a checkpointed batch embedding pipeline, a quantized vector index that fits an 8GB laptop, a production-style FastAPI service, a Streamlit demo UI, and measurable evaluation.
+The system is designed for a portfolio-quality end-to-end demonstration: streaming data ingestion, a checkpointed batch embedding pipeline, a quantized vector index that fits an 8GB laptop, a production-style FastAPI service, a static HTML/Tailwind/Alpine.js demo UI, and measurable evaluation.
 
 ### Goals
 
@@ -43,7 +43,7 @@ The system is designed for a portfolio-quality end-to-end demonstration: streami
 | Vector index | FAISS `IVF8192,SQ8` (default) / `HNSW32` (benchmark profile) | Quantized index = ~1GB for 2.5M vectors, ~95% recall, ~1-10ms search (M-series at the low end; Intel i5 dev laptop at the high end) |
 | Similarity metric | Cosine (L2-normalized + inner product) | Standard for text embeddings |
 | API | FastAPI + Pydantic v2 (`src/api/`) | Portfolio convention (matches customer-churn project) |
-| Demo UI | Streamlit (`dashboard/app.py`) | Portfolio convention |
+| Demo UI | Static HTML + Tailwind CSS + Alpine.js (`dashboard/index.html`), served by FastAPI | No build step or second service; the UI ships with the API |
 | Tests | pytest + `conftest.py` fixtures | Portfolio convention |
 | Linting | ruff | Portfolio convention (`.ruff_cache` present in siblings) |
 | Containerization | Dockerfile + docker-compose (multi-service, healthchecks) | Portfolio convention |
@@ -75,9 +75,9 @@ The system is designed for a portfolio-quality end-to-end demonstration: streami
                                                   └──────────┬───────────┘
                                                              │ HTTP
                                                     ┌────────▼───────────┐
-                                                    │  STREAMLIT DASHBOARD │
-                                                    │  query mode + seed   │
-                                                    │  paper picker        │
+                                                    │  HTML + TAILWIND UI  │
+                                                    │  served by FastAPI   │
+                                                    │  query + seed modes  │
                                                     └─────────────────────┘
 ```
 
@@ -148,7 +148,7 @@ FAISS index build with its own checkpointing.
 
 - **IVF8192,SQ8 (default)**: fits 8GB only if memory-hungry apps (browser, heavy editors) are closed during the build. No headroom — never run the ingest/embed/index pipelines concurrently.
 - **HNSW32 (benchmark profile)**: impossible at full corpus on 8GB — build peak alone exceeds total RAM. The HNSW benchmark runs on the **CS-subset scope** (`CORPUS_FILTER = ("cs.*",)`, ~800K papers): index ~1.4GB, build peak ~3GB — fits. See §12.
-- **Serving** (index resident + model + FastAPI + Streamlit): ~1.5-2GB — comfortable alongside normal apps.
+- **Serving** (index resident + model + FastAPI + static UI): ~1.5-2GB — comfortable alongside normal apps.
 
 ### 4.4 Benchmark (`src/bench_index.py`)
 
@@ -206,14 +206,18 @@ class PaperSearchResponse(BaseModel): # results: list[Paper], total
 
 ---
 
-## 6. Demo Dashboard (Streamlit)
+## 6. Demo Dashboard (HTML + Tailwind + Alpine.js)
 
-Single `dashboard/app.py` (churn-project pattern), two modes via sidebar:
+A single static `dashboard/index.html` served by FastAPI at `/` on the same
+origin as the API. No Node.js build step, no Python UI framework, and no second
+container:
 
-1. **Interest query mode**: free-text box → `/recommend/query` → ranked cards with title, score, category chips, abstract expander, "View on arXiv" link.
-2. **Seed paper mode**: title search (`/papers/search`) to pick a paper → `/recommend/paper/{id}` → ranked cards.
+1. **Interest query mode**: free-text box → `/recommend/query` → compact result list with title link, score, authors, date, expandable abstract, and arXiv link. Optional k/year/category filters are collapsed under "Filters".
+2. **Seed paper mode**: title search (`/papers/search`) to pick a paper → `/recommend/paper/{id}` → ranked results. Any result can be promoted to a seed with "More like this".
 
-`@st.cache_data` on API calls. `API_BASE_URL` from env (default `http://localhost:8000/api/v1`). Streamlit runs on `:8501`.
+Tailwind CSS and Alpine.js load from their CDNs. API calls use relative
+`/api/v1/...` URLs, and filters (k, year, categories) are applied client-side
+to the query string. The UI is responsive and keyboard-accessible.
 
 ---
 
@@ -247,7 +251,7 @@ Unit tests use the synthetic corpus (no model download — the model can be mock
 ### Docker
 
 - `Dockerfile` — multi-stage: builder (uv sync) → runtime (uv, non-root).
-- `docker-compose.yml` — two services with healthchecks:
+- `docker-compose.yml` — one service with a healthcheck; FastAPI serves both the API and the static UI:
 
 ```yaml
 services:
@@ -256,23 +260,15 @@ services:
     ports: ["8000:8000"]
     environment:
       INDEX_PATH: /app/data/index/arxiv.index
-      API_BASE_URL: http://app:8000/api/v1
-    volumes: ["./data:/app/data"]
-    healthcheck: { test: ["CMD", "curl", "-f", "http://localhost:8000/health"], start_period: 60s }
-
-  dashboard:
-    build: .                    # streamlit run dashboard/app.py --port 8501
-    ports: ["8501:8501"]
-    environment:
-      API_BASE_URL: http://app:8000/api/v1
-    depends_on: { app: { condition: service_healthy } }
+    volumes: ["./data:/app/data", "./models:/app/models"]
+    healthcheck: { test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"], start_period: 60s }
 ```
 
 **Gotcha (documented)**: on an 8GB host, Docker Desktop's VM must be capped well below the host total — allocate ~4GB. The ~1GB IVF/SQ8 index + app (~2GB total in the VM) fits; **HNSW profile does not** in any VM on this machine. If HNSW serving is ever desired, it requires a larger host. `start_period: 60s` covers index load.
 
 ### Config (`src/config.py`)
 
-Centralized `Paths` / `IndexParams` / `ModelConfig` classes + env overrides (`INDEX_PATH`, `API_BASE_URL`, `OMP_NUM_THREADS`), matching sibling conventions.
+Centralized `Paths` / `IndexParams` / `ModelConfig` classes + env overrides (`INDEX_PATH`, `OMP_NUM_THREADS`), matching sibling conventions.
 
 ---
 
@@ -298,7 +294,7 @@ research-paper-recommendation/
 │       ├── router.py
 │       └── schemas.py
 ├── dashboard/
-│   └── app.py                # Streamlit
+│   └── index.html            # static Tailwind + Alpine.js UI
 ├── tests/
 │   ├── conftest.py
 │   └── test_{ingest,embed,index,api}.py
@@ -328,7 +324,7 @@ research-paper-recommendation/
 | 3. Embed pipeline + tests | Medium | ONNX + manifest/resume |
 | 4. Index + bench + tests | Medium | IVF/SQ8 + benchmark report |
 | 5. FastAPI + tests | Medium | 5 endpoints, concurrency |
-| 6. Streamlit dashboard | Small | 2 modes |
+| 6. HTML/Tailwind dashboard | Small | 2 modes, no build step |
 | 7. Eval + README + Docker | Medium | reports + docs + compose |
 
 **Total**: ~2-3 weeks part-time. The 2.5M-paper embed job (~2h) runs once in the background during phase 4-5 development.

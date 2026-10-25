@@ -1,7 +1,7 @@
 [project]
 name = "research-paper-recommendation"
 version = "0.1.0"
-description = "arXiv paper recommendation system — streaming ingest, ONNX embedding, FAISS index, FastAPI serving, Streamlit demo"
+description = "arXiv paper recommendation system — streaming ingest, ONNX embedding, FAISS index, FastAPI serving, HTML demo"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
@@ -13,7 +13,6 @@ dependencies = [
     "polars>=1.43.2",
     "pydantic>=2.13.4",
     "pydantic-settings>=2.14.2",
-    "streamlit>=1.60.0",
     "tokenizers>=0.22.2",
     "transformers>=4.57.6",
     "uvicorn[standard]>=0.52.1",

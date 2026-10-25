@@ -106,7 +106,7 @@ def search_papers(
 # NOTE: register this route BEFORE the ``/papers/{arxiv_id}`` route below.
 # The literal path ``/papers/search`` wins over the path-parameter match.
 # FastAPI matches the routes in registration order.
-@router.get("/papers/{arxiv_id}", response_model=Paper)
+@router.get("/papers/{arxiv_id:path}", response_model=Paper)
 def get_paper(arxiv_id: str, service=_service) -> Paper:
     """Full metadata for one paper by arXiv id."""
     paper = service.by_id.get(arxiv_id)
@@ -128,7 +128,7 @@ def recommend_query(
     return _recommend(service, q, k, year_min, cat_list)
 
 
-@router.get("/recommend/paper/{arxiv_id}", response_model=RecommendResponse)
+@router.get("/recommend/paper/{arxiv_id:path}", response_model=RecommendResponse)
 def recommend_paper(
     arxiv_id: str,
     k: int = Query(10, ge=1, le=100),

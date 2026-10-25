@@ -6,9 +6,8 @@
 #
 # Multi-stage build: builder (uv sync) -> runtime (non-root, lean).
 #
-# The SAME image serves either service; docker-compose overrides CMD:
-#   - app       -> uvicorn src.api.app:app --host 0.0.0.0 --port 8000
-#   - dashboard -> streamlit run dashboard/app.py --server.port 8501
+# The image serves the FastAPI API under /api/v1, the OpenAPI docs under
+# /docs, and the static HTML/Tailwind/Alpine.js dashboard at /.
 #
 # PLATFORM GOTCHA (architecture §9): this is an Intel MacBook (macOS 12,
 # x86_64, 8GB). Docker Desktop's VM must be capped at ~4GB — the ~1GB
@@ -23,7 +22,8 @@ FROM python:3.12-slim AS builder
 
 ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \
-    UV_PYTHON=/usr/local/bin/python
+    UV_PYTHON=/usr/local/bin/python \
+    UV_HTTP_TIMEOUT=120
 
 WORKDIR /app
 
@@ -66,6 +66,6 @@ RUN mkdir -p /app/data /app/models && chown -R app:app /app
 
 USER app
 
-# Same image serves both services; compose overrides CMD for the dashboard.
-EXPOSE 8000 8501
+# API + dashboard are served by the same uvicorn process.
+EXPOSE 8000
 CMD ["uvicorn", "src.api.app:app", "--host", "0.0.0.0", "--port", "8000"]

@@ -1,0 +1,562 @@
+<!doctype html>
+<html lang="en" class="h-full">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="Find arXiv papers by research topic or from a paper you already know."
+    />
+    <title>PaperScout</title>
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%234f46e5'/%3E%3Cpath d='M9 22V10h5.2a4 4 0 0 1 0 8H12v4H9Zm3-7h2.1a1.1 1.1 0 1 0 0-2.2H12V15Z' fill='white'/%3E%3C/svg%3E"
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            fontFamily: {
+              sans: ['Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+            },
+          },
+        },
+      };
+    </script>
+    <style>
+      [x-cloak] {
+        display: none !important;
+      }
+      .paper-abstract {
+        white-space: pre-line;
+      }
+      summary {
+        list-style: none;
+      }
+      summary::-webkit-details-marker {
+        display: none;
+      }
+    </style>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.9/dist/cdn.min.js"></script>
+  </head>
+
+  <body class="min-h-full bg-white font-sans text-slate-900 antialiased">
+    <div
+      x-data="paperScout()"
+      x-cloak
+      class="mx-auto flex min-h-screen w-full max-w-3xl flex-col px-4 py-10 sm:px-6 sm:py-14"
+    >
+      <header class="mb-8">
+        <h1 class="text-2xl font-semibold tracking-tight text-slate-900">PaperScout</h1>
+        <p class="mt-1 text-sm text-slate-500">
+          Find arXiv papers by topic, or start from a paper you already know.
+        </p>
+      </header>
+
+      <main class="flex-1">
+        <!-- Search mode + filters -->
+        <div class="flex items-center justify-between gap-4">
+          <div class="inline-flex rounded-lg bg-slate-100 p-1" role="group" aria-label="Search mode">
+            <button
+              type="button"
+              @click="setMode('query')"
+              :aria-pressed="mode === 'query'"
+              :class="mode === 'query' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-900'"
+              class="rounded-md px-3 py-1.5 text-sm font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+            >
+              Research topic
+            </button>
+            <button
+              type="button"
+              @click="setMode('seed')"
+              :aria-pressed="mode === 'seed'"
+              :class="mode === 'seed' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-900'"
+              class="rounded-md px-3 py-1.5 text-sm font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+            >
+              Seed paper
+            </button>
+          </div>
+
+          <details x-ref="filters" class="group relative text-sm">
+            <summary
+              class="inline-flex cursor-pointer items-center gap-1 text-slate-500 transition hover:text-slate-900"
+            >
+              Filters
+              <span
+                x-show="filtersActive()"
+                class="h-1.5 w-1.5 rounded-full bg-indigo-500"
+                x-cloak
+              ></span>
+              <svg
+                class="h-3.5 w-3.5 transition group-open:rotate-180"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                aria-hidden="true"
+              >
+                <path stroke-linecap="round" stroke-linejoin="round" d="m6 9 6 6 6-6" />
+              </svg>
+            </summary>
+            <div
+              class="absolute right-0 z-20 mt-2 w-[min(28rem,calc(100vw-2rem))] rounded-xl border border-slate-200 bg-white p-4 shadow-lg"
+            >
+              <div class="grid gap-4 sm:grid-cols-3">
+                <label class="block text-xs font-medium text-slate-600">
+                  Results
+                  <input
+                    type="number"
+                    min="1"
+                    max="50"
+                    x-model.number="filters.k"
+                    class="mt-1 block w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200"
+                  />
+                </label>
+                <label class="block text-xs font-medium text-slate-600">
+                  Published after
+                  <input
+                    type="number"
+                    min="1991"
+                    max="2030"
+                    x-model.number="filters.yearMin"
+                    placeholder="Any year"
+                    class="mt-1 block w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200"
+                  />
+                </label>
+                <label class="block text-xs font-medium text-slate-600">
+                  Categories
+                  <input
+                    type="text"
+                    x-model="filters.categories"
+                    placeholder="cs.LG, cs.AI"
+                    class="mt-1 block w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200"
+                  />
+                </label>
+              </div>
+              <button
+                type="button"
+                @click="resetFilters()"
+                class="mt-3 text-xs font-medium text-slate-500 transition hover:text-slate-900"
+              >
+                Reset filters
+              </button>
+            </div>
+          </details>
+        </div>
+
+        <!-- Research topic mode -->
+        <form x-show="mode === 'query'" @submit.prevent="recommend()" class="mt-5">
+          <label for="interest" class="sr-only">Research topic</label>
+          <textarea
+            id="interest"
+            x-model="query"
+            rows="3"
+            @keydown.meta.enter.prevent="recommend()"
+            @keydown.ctrl.enter.prevent="recommend()"
+            placeholder="Describe what you are looking for, e.g. graph neural networks for molecules"
+            class="block w-full resize-none rounded-xl border border-slate-200 px-4 py-3 text-[15px] leading-6 text-slate-900 placeholder:text-slate-400 focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200"
+          ></textarea>
+
+          <div class="mt-3 flex justify-end">
+            <button
+              type="submit"
+              :disabled="loading"
+              class="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-slate-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <svg
+                x-show="loading"
+                class="h-4 w-4 animate-spin"
+                viewBox="0 0 24 24"
+                fill="none"
+                aria-hidden="true"
+              >
+                <circle class="opacity-25" cx="12" cy="12" r="9" stroke="currentColor" stroke-width="3" />
+                <path class="opacity-90" d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" stroke-width="3" stroke-linecap="round" />
+              </svg>
+              <span x-text="loading ? 'Searching…' : 'Find papers'"></span>
+            </button>
+          </div>
+        </form>
+
+        <!-- Seed paper mode -->
+        <div x-show="mode === 'seed'" class="mt-5">
+          <form @submit.prevent="searchSeeds()" class="flex flex-col gap-2 sm:flex-row">
+            <label for="seed-query" class="sr-only">Paper title</label>
+            <input
+              id="seed-query"
+              type="search"
+              x-model="seedQuery"
+              placeholder="Search by paper title"
+              class="min-w-0 flex-1 rounded-xl border border-slate-200 px-4 py-2.5 text-[15px] text-slate-900 placeholder:text-slate-400 focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200"
+            />
+            <button
+              type="submit"
+              :disabled="seedLoading"
+              class="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <svg
+                x-show="seedLoading"
+                class="h-4 w-4 animate-spin"
+                viewBox="0 0 24 24"
+                fill="none"
+                aria-hidden="true"
+              >
+                <circle class="opacity-25" cx="12" cy="12" r="9" stroke="currentColor" stroke-width="3" />
+                <path class="opacity-90" d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" stroke-width="3" stroke-linecap="round" />
+              </svg>
+              <span x-text="seedLoading ? 'Searching…' : 'Search'"></span>
+            </button>
+          </form>
+
+          <div
+            x-show="seedResults.length > 0"
+            class="mt-3 overflow-hidden rounded-xl border border-slate-200"
+            x-cloak
+          >
+            <template x-for="paper in seedResults" :key="paper.id">
+              <button
+                type="button"
+                @click="chooseSeed(paper)"
+                :class="selectedSeed?.id === paper.id ? 'bg-slate-50' : 'bg-white hover:bg-slate-50'"
+                class="flex w-full items-start justify-between gap-4 border-b border-slate-100 px-4 py-3 text-left transition last:border-b-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-500"
+              >
+                <span class="min-w-0">
+                  <span class="block text-sm font-medium leading-5 text-slate-900" x-text="paper.title"></span>
+                  <span class="mt-0.5 block text-xs text-slate-400" x-text="paper.update_date"></span>
+                </span>
+                <span
+                  x-show="selectedSeed?.id === paper.id"
+                  class="mt-0.5 shrink-0 text-xs font-medium text-indigo-600"
+                >
+                  Selected
+                </span>
+              </button>
+            </template>
+          </div>
+
+          <p
+            x-show="searchedSeed && !seedLoading && !error && seedResults.length === 0"
+            class="mt-3 text-sm text-slate-500"
+            x-cloak
+          >
+            No matching papers. Try a shorter title.
+          </p>
+          <p
+            x-show="seedResults.length > 0 && !selectedSeed"
+            class="mt-2 text-xs text-slate-400"
+            x-cloak
+          >
+            Select a paper to see similar work.
+          </p>
+        </div>
+
+        <p x-show="error" class="mt-4 text-sm text-rose-600" role="alert" x-text="error" x-cloak></p>
+
+        <!-- Results -->
+        <section id="results" x-show="!loading && results.length > 0" class="mt-10" aria-live="polite">
+          <div class="flex items-baseline justify-between gap-4 border-b border-slate-200 pb-2">
+            <h2 class="text-sm font-medium text-slate-900" x-text="resultsHeading()"></h2>
+            <span class="text-xs text-slate-400">
+              <span x-text="results.length"></span>
+              <span x-text="results.length === 1 ? 'result' : 'results'"></span>
+            </span>
+          </div>
+
+          <ul class="divide-y divide-slate-100">
+            <template x-for="rec in results" :key="rec.paper.id">
+              <li class="py-5" x-data="{ open: false }">
+                <div class="flex items-start justify-between gap-4">
+                  <h3 class="min-w-0 text-[15px] font-medium leading-6 text-slate-900">
+                    <a
+                      :href="rec.paper.arxiv_url"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      class="hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+                      x-text="rec.paper.title"
+                    ></a>
+                  </h3>
+                  <span
+                    class="shrink-0 pt-0.5 text-xs tabular-nums text-slate-400"
+                    x-text="scorePct(rec.score)"
+                  ></span>
+                </div>
+
+                <p class="mt-1 text-xs text-slate-500">
+                  <span x-text="authorLine(rec.paper.authors)"></span>
+                  <span class="mx-1" aria-hidden="true">·</span>
+                  <time x-text="formatDate(rec.paper.update_date)"></time>
+                </p>
+
+                <p
+                  class="paper-abstract mt-2 text-sm leading-6 text-slate-600"
+                  :class="open ? '' : 'line-clamp-2'"
+                  x-text="rec.paper.abstract"
+                ></p>
+
+                <div class="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
+                  <button
+                    type="button"
+                    @click="open = !open"
+                    class="text-slate-500 transition hover:text-slate-900"
+                    x-text="open ? 'Show less' : 'Show abstract'"
+                  ></button>
+                  <button
+                    type="button"
+                    @click="useAsSeed(rec.paper)"
+                    class="text-slate-500 transition hover:text-slate-900"
+                  >
+                    More like this
+                  </button>
+                  <a
+                    :href="rec.paper.arxiv_url"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    class="ml-auto inline-flex items-center gap-1 text-slate-500 transition hover:text-slate-900"
+                  >
+                    arXiv
+                    <svg
+                      class="h-3 w-3"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                      aria-hidden="true"
+                    >
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M7 17 17 7M8 7h9v9" />
+                    </svg>
+                  </a>
+                </div>
+              </li>
+            </template>
+          </ul>
+        </section>
+
+        <p
+          x-show="searched && !loading && !error && results.length === 0"
+          class="mt-8 text-sm text-slate-500"
+          x-cloak
+        >
+          No papers found. Try a broader topic or fewer filters.
+        </p>
+      </main>
+    </div>
+
+    <script>
+      function paperScout() {
+        return {
+          mode: 'query',
+          query: '',
+          seedQuery: '',
+          seedResults: [],
+          selectedSeed: null,
+          results: [],
+          loading: false,
+          seedLoading: false,
+          searched: false,
+          searchedSeed: false,
+          error: '',
+          filters: { k: 10, yearMin: '', categories: '' },
+
+          setMode(mode) {
+            if (this.mode === mode) return;
+            this.mode = mode;
+            this.error = '';
+            this.searched = false;
+            this.results = [];
+            this.closeFilters();
+          },
+
+          closeFilters() {
+            if (this.$refs.filters) {
+              this.$refs.filters.open = false;
+            }
+          },
+
+          async request(path, params = {}) {
+            const url = new URL('/api/v1' + path, window.location.origin);
+            Object.entries(params).forEach(([key, value]) => {
+              if (value !== '' && value !== null && value !== undefined) {
+                url.searchParams.set(key, value);
+              }
+            });
+
+            const response = await fetch(url, { headers: { Accept: 'application/json' } });
+            if (!response.ok) {
+              let detail;
+              try {
+                detail = (await response.json()).detail;
+              } catch {
+                // Ignore a non-JSON error body.
+              }
+              if (Array.isArray(detail)) {
+                detail = detail.map((item) => item.msg).join(', ');
+              }
+              throw new Error(detail || `Request failed with HTTP ${response.status}`);
+            }
+            return response.json();
+          },
+
+          filterParams() {
+            const k = Math.min(50, Math.max(1, Number(this.filters.k) || 10));
+            const params = { k };
+            const year = Number(this.filters.yearMin);
+            if (year >= 1991 && year <= 2030) {
+              params.year_min = year;
+            }
+            const categories = String(this.filters.categories || '')
+              .split(',')
+              .map((value) => value.trim())
+              .filter(Boolean)
+              .join(',');
+            if (categories) {
+              params.categories = categories;
+            }
+            return params;
+          },
+
+          async recommend() {
+            this.error = '';
+            this.searched = true;
+            this.closeFilters();
+            if (!this.query.trim()) {
+              this.results = [];
+              this.error = 'Enter a research topic to search.';
+              return;
+            }
+
+            this.loading = true;
+            this.results = [];
+            try {
+              const data = await this.request('/recommend/query', {
+                q: this.query.trim(),
+                ...this.filterParams(),
+              });
+              this.results = data.results;
+            } catch (error) {
+              this.error = error.message;
+            } finally {
+              this.loading = false;
+            }
+          },
+
+          async searchSeeds() {
+            this.error = '';
+            this.searchedSeed = true;
+            this.searched = false;
+            this.results = [];
+            this.closeFilters();
+            if (!this.seedQuery.trim()) {
+              this.seedResults = [];
+              this.selectedSeed = null;
+              this.error = 'Enter a paper title to search.';
+              return;
+            }
+
+            this.seedLoading = true;
+            this.seedResults = [];
+            this.selectedSeed = null;
+            try {
+              const data = await this.request('/papers/search', {
+                q: this.seedQuery.trim(),
+                limit: 8,
+              });
+              this.seedResults = data.results;
+            } catch (error) {
+              this.error = error.message;
+            } finally {
+              this.seedLoading = false;
+            }
+          },
+
+          async chooseSeed(paper) {
+            this.selectedSeed = paper;
+            await this.recommendFromSeed();
+            if (!this.error) {
+              await this.$nextTick();
+              document.getElementById('results')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+          },
+
+          async recommendFromSeed() {
+            this.error = '';
+            if (!this.selectedSeed) {
+              this.error = 'Choose a paper first.';
+              return;
+            }
+
+            this.loading = true;
+            this.results = [];
+            try {
+              const data = await this.request(
+                '/recommend/paper/' + encodeURIComponent(this.selectedSeed.id),
+                this.filterParams(),
+              );
+              this.results = data.results;
+              this.searched = true;
+            } catch (error) {
+              this.error = error.message;
+            } finally {
+              this.loading = false;
+            }
+          },
+
+          useAsSeed(paper) {
+            this.mode = 'seed';
+            this.seedQuery = paper.title;
+            this.seedResults = [paper];
+            this.selectedSeed = paper;
+            this.searchedSeed = true;
+            this.recommendFromSeed();
+            document.getElementById('interest')?.blur();
+          },
+
+          resetFilters() {
+            this.filters = { k: 10, yearMin: '', categories: '' };
+          },
+
+          filtersActive() {
+            const k = Number(this.filters.k) || 10;
+            const year = Number(this.filters.yearMin);
+            return (
+              k !== 10 ||
+              (year >= 1991 && year <= 2030) ||
+              String(this.filters.categories || '').trim() !== ''
+            );
+          },
+
+          resultsHeading() {
+            return this.mode === 'seed' && this.selectedSeed ? 'Similar papers' : 'Results';
+          },
+
+          scorePct(score) {
+            return (Math.max(0, Number(score)) * 100).toFixed(1) + '%';
+          },
+
+          formatDate(value) {
+            if (!value) return 'Unknown date';
+            const date = new Date(value + 'T00:00:00');
+            if (Number.isNaN(date.getTime())) return value;
+            return date.toLocaleDateString(undefined, {
+              year: 'numeric',
+              month: 'short',
+              day: 'numeric',
+            });
+          },
+
+          authorLine(authors) {
+            if (!authors || authors.length === 0) return 'Unknown authors';
+            const shown = authors.slice(0, 3).join(', ');
+            return authors.length > 3 ? shown + ' +' + (authors.length - 3) + ' more' : shown;
+          },
+        };
+      }
+    </script>
+  </body>
+</html>

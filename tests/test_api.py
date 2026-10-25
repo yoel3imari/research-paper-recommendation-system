@@ -160,6 +160,26 @@ class TestPaperLookup:
         r = client.get("/api/v1/papers/9999.99999")
         assert r.status_code == 404
 
+    def test_old_style_id_with_slash(self, client, service):
+        # Older arXiv ids contain a slash (e.g. ``comp-gas/9305001``).
+        service.by_id["comp-gas/9305001"] = paper_from_meta(
+            {
+                "id": "comp-gas/9305001",
+                "title": "Old style paper",
+                "abstract": "An older arXiv identifier.",
+                "authors": ["A. Author"],
+                "categories": ["cond-mat"],
+                "update_date": "1993-05-01",
+            }
+        )
+
+        lookup = client.get("/api/v1/papers/comp-gas/9305001")
+        recommend = client.get("/api/v1/recommend/paper/comp-gas/9305001", params={"k": 2})
+
+        assert lookup.status_code == 200
+        assert lookup.json()["id"] == "comp-gas/9305001"
+        assert recommend.status_code == 200
+
 
 class TestPaperSearch:
     def test_substring_match(self, client):

@@ -2,9 +2,11 @@
 # arXiv Paper Recommendation System — docker-compose
 # Phase 7 containerization (docs/architecture.md §9 "Deployment / Docker")
 #
-# Two services built from the SAME Dockerfile (CMD overridden per service):
-#   - app       : FastAPI (uvicorn) on :8000  — the recommendation API
-#   - dashboard : Streamlit on :8501          — demo UI, talks to `app`
+# One service built from the Dockerfile:
+#   - app : FastAPI + the static HTML/Tailwind/Alpine.js dashboard on :8000
+#
+# The UI is served by FastAPI at `/`; API routes live under `/api/v1` and the
+# interactive OpenAPI docs at `/docs`.
 #
 # ⚠️ PLATFORM GOTCHA (architecture §9): Intel MacBook, macOS 12, x86_64, 8GB.
 # Docker Desktop's VM MUST be capped at ~4GB (Settings → Resources → Memory).
@@ -17,7 +19,7 @@
 #   - data/index/arxiv.index + index_meta.json
 #   - data/processed/snapshot.parquet, ids.npy
 #   - models/all-MiniLM-L6-v2/  (ONNX model)
-# These are gitignored local files bind-mounted into the containers — they are
+# These are gitignored local files bind-mounted into the container — they are
 # NOT baked into the image.
 # =============================================================================
 
@@ -31,7 +33,6 @@ services:
     environment:
       INDEX_PATH: /app/data/index/arxiv.index
       OMP_NUM_THREADS: "2"
-      API_BASE_URL: http://app:8000/api/v1
     volumes:
       - ./data:/app/data
       - ./models:/app/models
@@ -41,15 +42,3 @@ services:
       timeout: 5s
       retries: 3
       start_period: 60s
-
-  dashboard:
-    build: .
-    # Streamlit must bind 0.0.0.0 inside the container to be reachable.
-    command: ["streamlit", "run", "dashboard/app.py", "--server.port", "8501", "--server.address", "0.0.0.0"]
-    ports:
-      - "8501:8501"
-    environment:
-      API_BASE_URL: http://app:8000/api/v1
-    depends_on:
-      app:
-        condition: service_healthy

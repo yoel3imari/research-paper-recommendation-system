@@ -21,6 +21,7 @@ import numpy as np
 import polars as pl
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 
 from ..config import ModelConfig, Paths
 from ..embed import OnnxEncoder
@@ -166,6 +167,12 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
     app.include_router(router, prefix="/api/v1")
+
+    @app.get("/", include_in_schema=False)
+    def dashboard() -> FileResponse:
+        """Serve the single-page dashboard (same origin as the API)."""
+        return FileResponse(Paths.ROOT / "dashboard" / "index.html", media_type="text/html")
+
     return app
 
 

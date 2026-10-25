@@ -2,8 +2,8 @@
 
 End-to-end recommendation engine for arXiv research papers: stream an open snapshot,
 embed titles + abstracts with a quantized ONNX model, build a FAISS vector index,
-serve recommendations through a FastAPI service, and explore them in a Streamlit
-dashboard.
+serve recommendations through a FastAPI service, and explore them in a static
+HTML/Tailwind/Alpine.js dashboard.
 
 No full-text or PDF processing — the system stores only bibliographic metadata
 (`title`, `abstract`, `authors`, `categories`) and links out to the original paper
@@ -36,7 +36,7 @@ on arXiv.
 | Vector index | FAISS `IVF8192,SQ8` (default) · `HNSW32` (benchmark profile) |
 | Similarity | Cosine (L2-normalized + inner product) |
 | API | FastAPI + Pydantic v2 (`src/api/`) |
-| Demo UI | Streamlit (`dashboard/app.py`) |
+| Demo UI | HTML + Tailwind CSS + Alpine.js (`dashboard/index.html`) |
 | Tests / lint | pytest · ruff |
 | Containerization | Dockerfile + docker-compose |
 
@@ -65,9 +65,9 @@ on arXiv.
                                                    └──────────┬───────────┘
                                                               │ HTTP
                                                      ┌────────▼───────────┐
-                                                     │  STREAMLIT DASHBOARD │
-                                                     │  query mode + seed   │
-                                                     │  paper picker        │
+                                                     │  HTML + TAILWIND UI  │
+                                                     │  served by FastAPI   │
+                                                     │  query + seed modes  │
                                                      └─────────────────────┘
 ```
 
@@ -81,6 +81,7 @@ Full design rationale, tradeoffs, and deferred work: [`docs/architecture.md`](do
 
 ```
 ├── pyproject.toml            # uv deps, pytest/ruff config
+├── setup.sh                  # interactive setup (deps + optional corpus)
 ├── src/
 │   ├── config.py             # paths, index params, env overrides
 │   ├── ingest.py             # streaming snapshot builder (Phase 2)
@@ -90,7 +91,7 @@ Full design rationale, tradeoffs, and deferred work: [`docs/architecture.md`](do
 │   ├── evaluate.py           # category-purity + hand-judged queries (Phase 7)
 │   └── api/                  # FastAPI app/router/schemas (Phase 5)
 ├── dashboard/
-│   └── app.py                # Streamlit demo (Phase 6)
+│   └── index.html            # static Tailwind + Alpine.js demo (Phase 6)
 ├── tests/                    # pytest suite (offline, synthetic corpus)
 ├── data/                     # gitignored artifacts (snapshot, embeddings, index)
 ├── models/                   # gitignored ONNX model cache
@@ -104,6 +105,27 @@ Full design rationale, tradeoffs, and deferred work: [`docs/architecture.md`](do
 
 Requires: Python 3.12, `uv`, an Intel-Mac or similar platform (see
 [docs/architecture.md §2](docs/architecture.md) for pinned wheel constraints).
+
+### Automated setup (recommended)
+
+```bash
+./setup.sh
+```
+
+The script installs dependencies with `uv`, prints the bandwidth, disk, RAM, and
+time cost of each corpus scope, and **asks for permission before downloading any
+paper data**. It can also embed the snapshot and build the FAISS index in the
+same run, or stop after ingest so you can do that later.
+
+```bash
+./setup.sh --help                              # all options
+./setup.sh --scope smoke                       # quick pipeline check
+./setup.sh --scope category --category cs      # real corpus, no build
+./setup.sh --yes --scope skip --no-build       # CI: deps + tests only
+```
+
+Declining the download is safe: setup still verifies the install and prints the
+commands to run later. The manual steps below are equivalent.
 
 ### 1. Install
 
@@ -166,12 +188,13 @@ uv run uvicorn src.api.app:app --reload --port 8000
 Interactive docs at <http://localhost:8000/docs>. Health probe at
 <http://localhost:8000/api/v1/health>.
 
-### 4. Run the dashboard
+### 4. Open the dashboard
 
-```bash
-uv run streamlit run dashboard/app.py
-# API_BASE_URL=http://localhost:8000/api/v1 is the default
-```
+The dashboard is a static page served by the API — no Node.js build step and
+no second process:
+
+- UI: <http://localhost:8000/>
+- Interactive API docs: <http://localhost:8000/docs>
 
 ### 5. Verify end-to-end
 
@@ -179,15 +202,15 @@ uv run streamlit run dashboard/app.py
 uv run python smoke_api.py          # real artifacts: index n == snapshot height,
                                     # seeded + query recommendations work
 uv run pytest -q                    # offline unit tests (no model/index needed)
-uv run ruff check src/ dashboard/ tests/
+uv run ruff check src/ tests/
 ```
 
 ### 6. Docker
 
 ```bash
 docker compose up --build
-# app:       http://localhost:8000/docs
-# dashboard: http://localhost:8501
+# app + UI: http://localhost:8000
+# API docs: http://localhost:8000/docs
 ```
 
 Note: on an 8GB Intel Mac, cap the Docker VM at ~4GB (see
